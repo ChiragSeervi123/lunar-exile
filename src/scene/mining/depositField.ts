@@ -26,7 +26,7 @@ const REGROW_TIME = 2.5
 /** Seconds for ore to pop up once its deposit has crumbled. */
 const ORE_TIME = 0.4
 /** Halo strength; kept faint so rare deposits catch the eye without lighting up the scene. */
-const HALO_STRENGTH = 0.45
+const HALO_STRENGTH = 0.3
 const ORE_GLOW = 0.6
 
 interface Visual {
@@ -190,8 +190,8 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
           v.mesh.setMatrixAt(v.slot, matrix.compose(position, v.rotation, scale.setScalar(d.size * k)))
           v.mesh.instanceMatrix.needsUpdate = true
           if (v.halo >= 0) {
-            const r = bounds.radius * d.size * 1.45 * k
-            const h = bounds.height * d.size * 0.8 * k
+            const r = bounds.radius * d.size * 1.35 * k
+            const h = bounds.height * d.size * 0.75 * k
             position.set(d.x, d.y, d.z).addScaledVector(up, bounds.height * d.size * 0.45)
             haloMesh.setMatrixAt(v.halo, matrix.compose(position, v.rotation, scale.set(r, h, r)))
             haloChanged = true

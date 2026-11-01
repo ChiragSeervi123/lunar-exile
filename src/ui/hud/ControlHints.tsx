@@ -26,7 +26,10 @@ export function CameraModeIndicator() {
 
 const MOVE_KEYS = [KEYBINDINGS.moveForward[0], KEYBINDINGS.moveLeft[0], KEYBINDINGS.moveBack[0], KEYBINDINGS.moveRight[0]]
 
-/** Keyboard reminder shown for the first seconds of play, above the survival bars; hidden on touch-sized screens. */
+/**
+ * Keyboard reminder shown for the first seconds of play, in the gap between the survival bars and
+ * the camera indicator; hidden where that gap is too narrow, such as touch-sized screens.
+ */
 export function ControlsHint() {
   const rows: [string, string][][] = [
     [
@@ -43,7 +46,7 @@ export function ControlsHint() {
     ],
   ]
   return (
-    <div className="absolute inset-x-0 bottom-48 hidden animate-hints flex-col items-center gap-3 px-6 sm:flex">
+    <div className="absolute bottom-10 left-[26rem] right-[15rem] hidden animate-hints flex-col items-center gap-3 lg:flex">
       {rows.map((items, i) => (
         <div
           key={i}

@@ -20,8 +20,8 @@ const TONES: Record<PanelTone, { eyebrow: string; border: string; rule: string; 
     border: 'border-amber-400/20',
     rule: 'from-amber-400/40',
     focus: 'focus-visible:text-amber-300',
-    // See-through, so the world stays visible behind the backpack.
-    surface: 'bg-ink-950/85',
+    // See-through beside the game; nearly solid when it covers the whole of a narrow screen.
+    surface: 'bg-ink-950/95 sm:bg-ink-950/85',
   },
 }
 

@@ -68,7 +68,7 @@ export function createHaloMaterial(): ShaderMaterial {
         vec4 mv = modelViewMatrix * local;
         vNormalView = normalize(normalMatrix * n);
         vViewDir = normalize(-mv.xyz);
-        vFade = smoothstep(2.5, 7.0, length((modelViewMatrix * center).xyz));
+        vFade = smoothstep(3.5, 10.0, length((modelViewMatrix * center).xyz));
         gl_Position = projectionMatrix * mv;
       }
     `,
@@ -79,7 +79,7 @@ export function createHaloMaterial(): ShaderMaterial {
       varying float vFade;
       void main() {
         float facing = abs(dot(normalize(vNormalView), normalize(vViewDir)));
-        gl_FragColor = vec4(vTint * pow(facing, 3.0) * vFade, 1.0);
+        gl_FragColor = vec4(vTint * pow(facing, 4.0) * vFade, 1.0);
         #include <colorspace_fragment>
       }
     `,
