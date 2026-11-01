@@ -1,3 +1,4 @@
+export * from './credits'
 export * from './enemies'
 export * from './items'
 export * from './missions'

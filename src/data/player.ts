@@ -3,7 +3,7 @@ export const PLAYER_BASE = {
   maxHealth: 100,
   maxOxygen: 100,
   maxStamina: 100,
-  maxShield: 50,
+  maxShield: 100,
   walkSpeed: 4,
   sprintSpeed: 7,
   jumpImpulse: 4,

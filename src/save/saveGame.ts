@@ -40,20 +40,36 @@ export function applySave(data: SaveData): void {
   useMissionStore.setState(data.missions)
 }
 
-export function saveToStorage(): void {
-  localStorage.setItem(SAVE.storageKey, JSON.stringify(createSave()))
-}
-
-/** Returns false when there is no usable save (missing, corrupt, or other version). */
-export function loadFromStorage(): boolean {
+/** Returns false when storage is unavailable (e.g. blocked or full). */
+export function saveToStorage(): boolean {
   try {
-    const raw = localStorage.getItem(SAVE.storageKey)
-    if (!raw) return false
-    const data = JSON.parse(raw) as SaveData
-    if (data.version !== SAVE.version) return false
-    applySave(data)
+    localStorage.setItem(SAVE.storageKey, JSON.stringify(createSave()))
     return true
   } catch {
     return false
   }
+}
+
+/** The stored save, or null when it is missing, corrupt, or from another save version. */
+function readSave(): SaveData | null {
+  try {
+    const raw = localStorage.getItem(SAVE.storageKey)
+    if (!raw) return null
+    const data = JSON.parse(raw) as SaveData | null
+    return data?.version === SAVE.version ? data : null
+  } catch {
+    return null
+  }
+}
+
+export function hasSavedGame(): boolean {
+  return readSave() !== null
+}
+
+/** Returns false when there is no usable save. */
+export function loadFromStorage(): boolean {
+  const data = readSave()
+  if (!data) return false
+  applySave(data)
+  return true
 }

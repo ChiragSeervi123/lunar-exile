@@ -1,20 +1,37 @@
-import { CuboidCollider, RigidBody } from '@react-three/rapier'
+import { useEffect, useMemo } from 'react'
+import type { Terrain as TerrainData } from '@/game/world'
 import type { RegionDef } from '@/types/content'
+import { buildTerrainMeshes } from './terrainGeometry'
 
 interface TerrainProps {
   region: RegionDef
+  terrain: TerrainData
+  spacing: number
+  horizonSegments: number
 }
 
-/** Placeholder flat ground sized from the region; replace with heightfield terrain. */
-export function Terrain({ region }: TerrainProps) {
-  const half = region.size / 2
+export function Terrain({ region, terrain, spacing, horizonSegments }: TerrainProps) {
+  const meshes = useMemo(
+    () => buildTerrainMeshes(terrain, region.palette, { spacing, horizonSegments, seed: region.terrain.seed }),
+    [terrain, region, spacing, horizonSegments],
+  )
+  useEffect(
+    () => () => {
+      meshes.near.dispose()
+      meshes.far.dispose()
+    },
+    [meshes],
+  )
+
   return (
-    <RigidBody type="fixed" colliders={false}>
-      <CuboidCollider args={[half, 0.5, half]} position={[0, -0.5, 0]} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[region.size, region.size]} />
-        <meshStandardMaterial color="#6b6e75" />
+    <>
+      <mesh geometry={meshes.near} castShadow receiveShadow>
+        <meshStandardMaterial vertexColors flatShading roughness={0.96} metalness={0} />
       </mesh>
-    </RigidBody>
+      {/* Beyond the shadow-casting area: only receives light. */}
+      <mesh geometry={meshes.far} receiveShadow>
+        <meshStandardMaterial vertexColors flatShading roughness={0.96} metalness={0} />
+      </mesh>
+    </>
   )
 }

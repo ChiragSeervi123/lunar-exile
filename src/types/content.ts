@@ -60,12 +60,83 @@ export interface MissionDef {
   requires?: string[]
 }
 
+export interface CraterTierDef {
+  count: number
+  minRadius: number
+  maxRadius: number
+  /** Craters of this tier are scattered within ±spread meters of the region centre. */
+  spread: number
+}
+
+/** A hand-placed crater, used for composition (e.g. a crater framing the view of Earth). */
+export interface LandmarkCraterDef {
+  x: number
+  z: number
+  radius: number
+  /** 0 = old and eroded, 1 = fresh with a sharp rim and bright ejecta rays. */
+  freshness: number
+}
+
+export interface TerrainDef {
+  seed: number
+  /** Half-size of the generated terrain, including the horizon beyond the playable area, meters. */
+  extent: number
+  /** Amplitude of broad rolling elevation, meters. */
+  relief: number
+  /** Amplitude of small surface bumps, meters. */
+  roughness: number
+  craterTiers: CraterTierDef[]
+  landmarks: LandmarkCraterDef[]
+  /** Mountain ring around the region: rises from `radius` meters out, peaking near `height`. */
+  horizon: { radius: number; height: number }
+}
+
+export interface RockFieldDef {
+  /** Rocks per 100 m² of playable area. */
+  debrisDensity: number
+  mediumDensity: number
+  boulderDensity: number
+  /** Boulders around each crater rim, per 10 m of crater radius. */
+  rimBoulders: number
+}
+
+/** Degrees. Azimuth is clockwise from north (-Z); elevation is above the horizon. */
+export interface SkyAngleDef {
+  azimuth: number
+  elevation: number
+}
+
+export interface SkyDef {
+  sun: SkyAngleDef
+  /** null where Earth never rises (the lunar far side). */
+  earth: (SkyAngleDef & { angularSize: number }) | null
+  /** Distance fade toward the horizon colour. */
+  fog: { color: string; near: number; far: number }
+}
+
+export interface SurfacePaletteDef {
+  /** Bright highland regolith. */
+  highlands: string
+  /** Dark mare basalt. */
+  maria: string
+  craterFloor: string
+  ejecta: string
+  rock: string
+}
+
 export interface RegionDef {
   name: string
   description: string
-  /** Side length of the square region in meters. */
+  /** Selenographic coordinates shown in the UI. */
+  coordinates: string
+  /** Side length of the square playable area, centred on the origin, meters. */
   size: number
-  terrain: { seed: number; amplitude: number; roughness: number }
+  /** Where the player arrives; kept level and clear of craters and rocks. */
+  spawn: { x: number; z: number }
+  terrain: TerrainDef
+  rocks: RockFieldDef
+  sky: SkyDef
+  palette: SurfacePaletteDef
   resourceNodes: { resourceId: string; density: number }[]
   enemySpawns: { enemyId: string; count: number }[]
 }
