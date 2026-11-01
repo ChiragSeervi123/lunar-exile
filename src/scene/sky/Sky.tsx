@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { AdditiveBlending, BackSide, type Group } from 'three'
 import { CAMERA } from '@/config/camera'
+import { FRAME_PRIORITY } from '@/config/game'
 import type { RegionDef } from '@/types/content'
 import { directionFromAngles } from '@/utils/math'
 import { deriveSeed } from '@/utils/random'
@@ -56,9 +57,10 @@ export function Sky({ region, starCount }: SkyProps) {
 
 function SkyAnchor({ children }: { children: ReactNode }) {
   const ref = useRef<Group>(null)
+  // After the camera has moved this frame, so the sky never lags a frame behind it.
   useFrame(({ camera }) => {
     ref.current?.position.copy(camera.position)
-  })
+  }, FRAME_PRIORITY.followers)
   return <group ref={ref}>{children}</group>
 }
 

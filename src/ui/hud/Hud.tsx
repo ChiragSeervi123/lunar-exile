@@ -1,7 +1,8 @@
-import { KEYBINDINGS, keyLabel } from '@/config/input'
+import { actionLabel } from '@/config/input'
 import { getRegion } from '@/data/regions'
 import { useWorldStore } from '@/stores/worldStore'
 import { cx } from '@/utils/cx'
+import { CameraModeIndicator, ControlsHint, LookHint, Reticle } from './ControlHints'
 import { SurvivalBars } from './SurvivalBars'
 
 /** In-game overlay. Never captures pointer events, so the canvas stays interactive. */
@@ -22,7 +23,7 @@ export function Hud({ leaving }: { leaving: boolean }) {
 
       <div className="absolute right-6 top-6 flex items-center gap-3 text-[11px] font-semibold tracking-[0.3em] text-lunar-400 sm:right-10 sm:top-8">
         <kbd className="border border-lunar-700 px-1.5 py-0.5 font-ui text-[10px] tracking-[0.15em] text-lunar-200">
-          {keyLabel(KEYBINDINGS.pause)}
+          {actionLabel('pause')}
         </kbd>
         PAUSE
       </div>
@@ -30,6 +31,11 @@ export function Hud({ leaving }: { leaving: boolean }) {
       <div className="absolute bottom-6 left-6 sm:bottom-10 sm:left-10">
         <SurvivalBars />
       </div>
+
+      <CameraModeIndicator />
+      <Reticle />
+      {!leaving && <ControlsHint />}
+      <LookHint />
 
       {!leaving && (
         <div className="absolute inset-x-0 top-[27%] flex animate-region-card flex-col items-center px-6 text-center">

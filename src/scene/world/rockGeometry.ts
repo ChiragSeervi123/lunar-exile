@@ -1,7 +1,28 @@
 import { BufferAttribute, IcosahedronGeometry, type BufferGeometry } from 'three'
+import { ROCK_CLASSES, ROCK_VARIANTS, type RockClass } from '@/game/world'
+import type { RegionDef } from '@/types/content'
 import { smoothstep } from '@/utils/math'
 import { createNoise3D, fbm3 } from '@/utils/noise'
-import { createRng, randRange } from '@/utils/random'
+import { createRng, deriveSeed, randRange } from '@/utils/random'
+
+/** Shape detail per class: icosahedron subdivisions and surface roughness. */
+const ROCK_SHAPES: Record<RockClass, { detail: number; roughness: number }> = {
+  debris: { detail: 0, roughness: 0.35 },
+  medium: { detail: 1, roughness: 0.32 },
+  boulder: { detail: 2, roughness: 0.3 },
+}
+
+/** Every rock shape for a region: the variants of each class. Shared by rendering and collision. */
+export function createRockSet(region: RegionDef): Record<RockClass, BufferGeometry[]> {
+  const set = {} as Record<RockClass, BufferGeometry[]>
+  for (const cls of ROCK_CLASSES) {
+    const { detail, roughness } = ROCK_SHAPES[cls]
+    set[cls] = Array.from({ length: ROCK_VARIANTS }, (_, variant) =>
+      createRockGeometry(deriveSeed(region.terrain.seed, `${cls}-${variant}`), detail, roughness),
+    )
+  }
+  return set
+}
 
 /**
  * Low-poly rock: a noise-displaced icosahedron with a few flat fracture planes, a flattened base

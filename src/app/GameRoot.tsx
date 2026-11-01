@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { KEYBINDINGS } from '@/config/input'
+import { actionForCode } from '@/config/input'
+import { attachControls, pointerJustUnlocked } from '@/input/controls'
 import { useGameStore } from '@/stores/gameStore'
 import { Hud } from '@/ui/hud/Hud'
 import { usePresence } from '@/ui/hooks/usePresence'
@@ -7,7 +8,7 @@ import { MainMenu } from '@/ui/menus/MainMenu'
 import { PauseMenu } from '@/ui/menus/PauseMenu'
 import { cx } from '@/utils/cx'
 import { GameCanvas } from './GameCanvas'
-import { continueGame, exitToMenu, resumeGame, startNewGame, togglePause } from './session'
+import { continueGame, exitToMenu, pauseGame, resumeGame, startNewGame, togglePause } from './session'
 
 /** Exit animation lengths, ms. */
 const MENU_EXIT = 1400
@@ -22,12 +23,20 @@ export function GameRoot() {
   const hud = usePresence(phase !== 'menu' ? true : null, HUD_EXIT)
   const pause = usePresence(phase === 'paused' ? true : null, PAUSE_EXIT)
 
+  // One set of input listeners for the whole app; removed again on unmount.
   useEffect(() => {
+    const detachControls = attachControls({ onPointerLockLost: pauseGame })
     const onKey = (event: KeyboardEvent) => {
-      if (event.code === KEYBINDINGS.pause && !event.defaultPrevented && !event.repeat) togglePause()
+      if (actionForCode(event.code) !== 'pause' || event.defaultPrevented || event.repeat) return
+      // Esc with the mouse captured only releases it; that already paused the game.
+      if (pointerJustUnlocked()) return
+      togglePause()
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      detachControls()
+      window.removeEventListener('keydown', onKey)
+    }
   }, [])
 
   return (

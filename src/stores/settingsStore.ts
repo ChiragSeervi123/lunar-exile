@@ -10,6 +10,7 @@ interface SettingsState {
   graphicsQuality: GraphicsQuality
   setMasterVolume: (volume: number) => void
   setSfxVolume: (volume: number) => void
+  setMouseSensitivity: (sensitivity: number) => void
   setGraphicsQuality: (quality: GraphicsQuality) => void
 }
 
@@ -23,6 +24,7 @@ export const useSettingsStore = create<SettingsState>()(
       graphicsQuality: DEFAULT_GRAPHICS_QUALITY,
       setMasterVolume: (masterVolume) => set({ masterVolume }),
       setSfxVolume: (sfxVolume) => set({ sfxVolume }),
+      setMouseSensitivity: (mouseSensitivity) => set({ mouseSensitivity }),
       setGraphicsQuality: (graphicsQuality) => set({ graphicsQuality }),
     }),
     { name: 'lunar-exile-settings', version: 1 },

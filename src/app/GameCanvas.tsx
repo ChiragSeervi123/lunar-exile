@@ -1,9 +1,10 @@
 import { Canvas, useFrame } from '@react-three/fiber'
 import { Physics } from '@react-three/rapier'
 import { Suspense, useRef } from 'react'
-import { PHYSICS } from '@/config/game'
+import { FRAME_PRIORITY, PHYSICS } from '@/config/game'
 import { GRAPHICS_PRESETS } from '@/config/graphics'
 import { CameraRig } from '@/scene/camera/CameraRig'
+import { Player } from '@/scene/player/Player'
 import { Sky } from '@/scene/sky/Sky'
 import { LunarWorld } from '@/scene/world/LunarWorld'
 import { useActiveRegion } from '@/scene/world/useActiveRegion'
@@ -14,20 +15,18 @@ import { useSettingsStore } from '@/stores/settingsStore'
 export function GameCanvas() {
   const quality = useSettingsStore((s) => s.graphicsQuality)
   const preset = GRAPHICS_PRESETS[quality]
-  const paused = useGameStore((s) => s.phase !== 'playing')
+  const phase = useGameStore((s) => s.phase)
   const { region, terrain } = useActiveRegion()
 
   return (
-    <Canvas
-      shadows="percentage"
-      dpr={preset.dpr}
-      gl={{ antialias: true, powerPreference: 'high-performance' }}
-    >
-      <CameraRig region={region} terrain={terrain} />
+    <Canvas shadows="percentage" dpr={preset.dpr} gl={{ antialias: true, powerPreference: 'high-performance' }}>
       <Sky region={region} starCount={preset.starCount} />
       <Suspense fallback={null}>
-        <Physics gravity={PHYSICS.gravity} paused={paused}>
+        {/* Runs behind the menu too (static bodies only, nearly free), so queries are ready when a game starts. */}
+        <Physics gravity={PHYSICS.gravity} paused={phase === 'paused'} updatePriority={FRAME_PRIORITY.physics}>
+          <CameraRig region={region} terrain={terrain} />
           <LunarWorld preset={preset} />
+          {phase !== 'menu' && <Player region={region} terrain={terrain} />}
         </Physics>
         <SceneReadySignal />
       </Suspense>

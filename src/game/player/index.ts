@@ -1,11 +1,20 @@
+import type { RegionDef } from '@/types/content'
+import { DEG2RAD } from '@/utils/math'
+
+export * from './animation'
+export * from './movement'
+
 export type CameraMode = 'first-person' | 'third-person'
 
-/** Per-frame movement intent, produced by input and consumed by the player body. */
-export interface MovementInput {
-  forward: number
-  strafe: number
-  jump: boolean
-  sprint: boolean
+/** Where the player body appears when a game starts or resumes. */
+export interface PlayerSpawn {
+  /** Feet position, meters. */
+  position: [number, number, number]
+  /** Radians clockwise from north (-Z). */
+  facing: number
 }
 
-export const NO_INPUT: MovementInput = { forward: 0, strafe: 0, jump: false, sprint: false }
+/** Heading the player starts with: toward Earth, or away from the sun where Earth never rises. */
+export function defaultFacing(region: RegionDef): number {
+  return (region.sky.earth?.azimuth ?? region.sky.sun.azimuth + 180) * DEG2RAD
+}

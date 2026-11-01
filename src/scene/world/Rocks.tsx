@@ -1,17 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { Color, Euler, Matrix4, Quaternion, Vector3, type BufferGeometry, type InstancedMesh } from 'three'
-import { ROCK_CLASSES, ROCK_VARIANTS, scatterRocks, type RockClass, type RockPlacement, type Terrain } from '@/game/world'
+import { ROCK_CLASSES, scatterRocks, type RockClass, type RockPlacement, type Terrain } from '@/game/world'
 import type { RegionDef } from '@/types/content'
-import { deriveSeed } from '@/utils/random'
-import { createRockGeometry } from './rockGeometry'
+import { rockColliderShapes } from './rockColliderShapes'
+import { RockColliders } from './RockColliders'
+import { createRockSet } from './rockGeometry'
 
-/** Shape detail per class: icosahedron subdivisions and surface roughness. */
-const SHAPES: Record<RockClass, { detail: number; roughness: number; castShadow: boolean }> = {
-  // Debris shadows would be sub-pixel; skipping them keeps the shadow pass cheap.
-  debris: { detail: 0, roughness: 0.35, castShadow: false },
-  medium: { detail: 1, roughness: 0.32, castShadow: true },
-  boulder: { detail: 2, roughness: 0.3, castShadow: true },
-}
+/** Debris shadows would be sub-pixel; skipping them keeps the shadow pass cheap. */
+const CASTS_SHADOW: Record<RockClass, boolean> = { debris: false, medium: true, boulder: true }
 
 interface RocksProps {
   region: RegionDef
@@ -19,36 +15,33 @@ interface RocksProps {
   debrisDensity: number
 }
 
-/** All rocks in the region: one instanced draw call per rock class and shape variant. */
+/** All rocks in the region: one instanced draw call per rock class and shape variant, plus their colliders. */
 export function Rocks({ region, terrain, debrisDensity }: RocksProps) {
   const field = useMemo(() => scatterRocks(terrain, region, debrisDensity), [terrain, region, debrisDensity])
-  const geometries = useMemo(
-    () =>
-      ROCK_CLASSES.map((cls) =>
-        Array.from({ length: ROCK_VARIANTS }, (_, variant) =>
-          createRockGeometry(
-            deriveSeed(region.terrain.seed, `${cls}-${variant}`),
-            SHAPES[cls].detail,
-            SHAPES[cls].roughness,
-          ),
-        ),
-      ),
-    [region],
+  const shapes = useMemo(() => createRockSet(region), [region])
+  useEffect(
+    () => () => Object.values(shapes).forEach((variants) => variants.forEach((geometry) => geometry.dispose())),
+    [shapes],
   )
-  useEffect(() => () => geometries.flat().forEach((geometry) => geometry.dispose()), [geometries])
+  const colliders = useMemo(() => rockColliderShapes(field, shapes), [field, shapes])
   const tint = useMemo(() => new Color(region.palette.rock), [region])
 
-  return ROCK_CLASSES.map((cls, c) =>
-    geometries[c].map((geometry, variant) => (
-      <RockInstances
-        key={`${cls}-${variant}`}
-        geometry={geometry}
-        placements={field[cls]}
-        variant={variant}
-        tint={tint}
-        castShadow={SHAPES[cls].castShadow}
-      />
-    )),
+  return (
+    <>
+      {ROCK_CLASSES.map((cls) =>
+        shapes[cls].map((geometry, variant) => (
+          <RockInstances
+            key={`${cls}-${variant}`}
+            geometry={geometry}
+            placements={field[cls]}
+            variant={variant}
+            tint={tint}
+            castShadow={CASTS_SHADOW[cls]}
+          />
+        )),
+      )}
+      <RockColliders shapes={colliders} />
+    </>
   )
 }
 

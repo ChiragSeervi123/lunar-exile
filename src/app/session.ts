@@ -1,3 +1,4 @@
+import { lockPointer, unlockPointer } from '@/input/controls'
 import { hasSavedGame, loadFromStorage, saveToStorage } from '@/save/saveGame'
 import { useEconomyStore } from '@/stores/economyStore'
 import { useGameStore } from '@/stores/gameStore'
@@ -6,7 +7,11 @@ import { useMissionStore } from '@/stores/missionStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useWorldStore } from '@/stores/worldStore'
 
-/** Session flow: moving between the menu and the game, and the save that goes with it. */
+/*
+ * Session flow: moving between the menu, the game and the pause menu, with the save and mouse
+ * capture that go with each. Called from clicks and key presses, which browsers require before
+ * they allow pointer lock.
+ */
 
 function resetGameState(): void {
   usePlayerStore.setState(usePlayerStore.getInitialState(), true)
@@ -16,11 +21,16 @@ function resetGameState(): void {
   useWorldStore.setState(useWorldStore.getInitialState(), true)
 }
 
+function save(): void {
+  useGameStore.getState().setHasSave(saveToStorage() || hasSavedGame())
+}
+
 export function startNewGame(): void {
   resetGameState()
   // Save immediately so the run can be continued later.
-  const saved = saveToStorage()
-  useGameStore.setState({ phase: 'playing', hasSave: saved })
+  save()
+  useGameStore.getState().setPhase('playing')
+  lockPointer()
 }
 
 export function continueGame(): void {
@@ -29,19 +39,29 @@ export function continueGame(): void {
     return
   }
   useGameStore.getState().setPhase('playing')
+  lockPointer()
 }
 
-export function togglePause(): void {
-  const { phase, setPhase } = useGameStore.getState()
-  if (phase === 'playing') setPhase('paused')
-  else if (phase === 'paused') setPhase('playing')
+export function pauseGame(): void {
+  if (useGameStore.getState().phase !== 'playing') return
+  useGameStore.getState().setPhase('paused')
+  unlockPointer()
+  save()
 }
 
 export function resumeGame(): void {
+  if (useGameStore.getState().phase !== 'paused') return
   useGameStore.getState().setPhase('playing')
+  lockPointer()
+}
+
+export function togglePause(): void {
+  if (useGameStore.getState().phase === 'playing') pauseGame()
+  else resumeGame()
 }
 
 export function exitToMenu(): void {
-  const saved = saveToStorage()
-  useGameStore.setState({ phase: 'menu', hasSave: saved || hasSavedGame() })
+  save()
+  useGameStore.getState().setPhase('menu')
+  unlockPointer()
 }

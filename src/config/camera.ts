@@ -1,16 +1,13 @@
 export const CAMERA = {
-  fov: { 'first-person': 75, 'third-person': 60 },
-  /** Field of view for menu and intro shots. */
-  cinematicFov: 50,
+  /** Vertical field of view per view mode, degrees. */
+  fov: { menu: 50, 'third-person': 58, 'first-person': 72 },
   near: 0.25,
   /** Sky objects (stars, Earth, sun) are placed inside this distance. */
   far: 12000,
-  /** Eye height above the player's feet in first person, meters. */
-  eyeHeight: 1.7,
-  /** Offset from the player in third person: [right, up, back]. */
-  thirdPersonOffset: [0.6, 2, 4.5] as [number, number, number],
-  /** Minimum clearance kept between the camera and the ground, meters. */
+  /** Minimum clearance kept between the menu camera and the ground, meters. */
   groundClearance: 1.2,
+  /** Radians of turn per pixel of mouse movement at sensitivity 1. */
+  mouseRadiansPerPixel: 0.0022,
 
   /** Slow pan across the landing site behind the main menu. Angles in degrees, times in seconds. */
   menu: {
@@ -23,20 +20,45 @@ export const CAMERA = {
     sway: 8,
     period: 90,
   },
-  /** Over-the-shoulder establishing shot of the landing zone, where the astronaut will stand. */
-  intro: {
-    distance: 9,
-    height: 3.6,
-    /** Camera position around the spawn point, relative to the view toward Earth. */
-    angle: -18,
-    lookAhead: 24,
-    lookHeight: 1.6,
-    frameOffset: 13,
-    drift: 0.3,
+
+  /** Follow camera behind and above the astronaut. Distances in meters, angles in degrees. */
+  thirdPerson: {
+    distance: 4.6,
+    /** Height of the point the camera orbits, above the feet. */
+    pivotHeight: 1.55,
+    /** Sideways offset for an over-the-shoulder view. */
+    shoulderOffset: 0.45,
+    pitchMin: -55,
+    pitchMax: 35,
+    /** Pitch when a game starts: looking slightly down past the astronaut. */
+    startPitch: -10,
+    /** Radius of the sphere swept from the pivot to keep the camera out of terrain and rocks. */
+    collisionRadius: 0.25,
+    collisionMargin: 0.1,
+    /** Exponential smoothing rates (higher is tighter): following the body, and easing back out after an obstruction. */
+    followSharpness: 22,
+    verticalSharpness: 9,
+    zoomOutSharpness: 4,
+    /** Minimum clearance above the terrain, meters. */
+    groundClearance: 0.3,
   },
+
+  firstPerson: {
+    /** Eye height above the feet, inside the helmet, meters. */
+    eyeHeight: 1.66,
+    pitchMin: -80,
+    pitchMax: 80,
+  },
+
+  /** Closer than this to the astronaut's head, the body is hidden from the camera, meters. */
+  hideBodyDistance: 0.75,
+
   /** Aspect ratio the horizontal framing offsets are tuned for; narrower screens scale them down. */
   referenceAspect: 16 / 9,
+  /** Camera flight between the menu and the game, seconds. */
   transitionSeconds: 3.4,
-  /** Extra height at the midpoint of a camera transition, meters. */
+  /** Extra height at the midpoint of that flight, meters. */
   transitionArc: 10,
+  /** Blend between first and third person, seconds. */
+  modeSwitchSeconds: 0.45,
 }

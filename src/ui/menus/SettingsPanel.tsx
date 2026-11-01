@@ -16,7 +16,8 @@ export function SettingsPanel({ onClose, leaving }: SettingsPanelProps) {
   const masterVolume = useSettingsStore((s) => s.masterVolume)
   const sfxVolume = useSettingsStore((s) => s.sfxVolume)
   const quality = useSettingsStore((s) => s.graphicsQuality)
-  const { setMasterVolume, setSfxVolume, setGraphicsQuality } = useSettingsStore.getState()
+  const sensitivity = useSettingsStore((s) => s.mouseSensitivity)
+  const { setMasterVolume, setSfxVolume, setMouseSensitivity, setGraphicsQuality } = useSettingsStore.getState()
   const preset = GRAPHICS_PRESETS[quality]
   const preview = () => playSound('uiConfirm')
 
@@ -29,6 +30,23 @@ export function SettingsPanel({ onClose, leaving }: SettingsPanelProps) {
         <div className="mt-6 space-y-7">
           <RangeSlider label="MASTER VOLUME" value={masterVolume} onChange={setMasterVolume} onCommit={preview} />
           <RangeSlider label="EFFECTS VOLUME" value={sfxVolume} onChange={setSfxVolume} onCommit={preview} />
+        </div>
+      </section>
+
+      <section aria-labelledby="settings-controls" className="mt-12">
+        <h3 id="settings-controls" className="font-ui text-xs font-semibold tracking-[0.45em] text-lunar-500">
+          CONTROLS
+        </h3>
+        <div className="mt-6">
+          <RangeSlider
+            label="MOUSE SENSITIVITY"
+            value={sensitivity}
+            onChange={setMouseSensitivity}
+            min={0.25}
+            max={2.5}
+            step={0.05}
+            format={(value) => `${value.toFixed(2)}×`}
+          />
         </div>
       </section>
 

@@ -4,9 +4,11 @@ export const PLAYER_BASE = {
   maxOxygen: 100,
   maxStamina: 100,
   maxShield: 100,
+  /** Ground speeds, m/s. */
   walkSpeed: 4,
   sprintSpeed: 7,
-  jumpImpulse: 4,
+  /** Upward speed at takeoff, m/s. */
+  jumpSpeed: 3.3,
 } as const
 
 export const STARTING_CREDITS = 0

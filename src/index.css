@@ -33,6 +33,7 @@
   --animate-hud-in: fade-in 1.2s ease-out 2.4s both;
   --animate-hud-out: fade-out 0.5s ease-in both;
   --animate-region-card: region-card 6.5s ease-in-out 2.9s both;
+  --animate-hints: hints 11s ease-in-out 3.6s both;
 
   @keyframes fade-in {
     from {
@@ -73,6 +74,16 @@
     to {
       opacity: 0;
       transform: translateX(28px);
+    }
+  }
+  @keyframes hints {
+    0%,
+    100% {
+      opacity: 0;
+    }
+    10%,
+    82% {
+      opacity: 1;
     }
   }
   @keyframes region-card {

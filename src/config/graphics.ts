@@ -6,8 +6,10 @@ export interface GraphicsPreset {
   /** Device-pixel-ratio range handed to the renderer. */
   dpr: [number, number]
   shadowMapSize: number
-  /** Half-width of the area around the focus point that receives sun shadows, meters. */
+  /** Half-width of the sun-shadowed area behind the main menu, meters. */
   shadowExtent: number
+  /** Half-width of the sun-shadowed area that travels with the player, meters. Smaller is sharper. */
+  followShadowExtent: number
   /** Terrain vertex spacing inside the playable area, meters. */
   terrainSpacing: number
   /** Segments per side of each ring of the horizon terrain beyond the playable area. */
@@ -26,6 +28,7 @@ export const GRAPHICS_PRESETS: Record<GraphicsQuality, GraphicsPreset> = {
     dpr: [1, 1],
     shadowMapSize: 1024,
     shadowExtent: 170,
+    followShadowExtent: 75,
     terrainSpacing: 4,
     horizonSegments: 48,
     debrisDensity: 0.3,
@@ -37,6 +40,7 @@ export const GRAPHICS_PRESETS: Record<GraphicsQuality, GraphicsPreset> = {
     dpr: [1, 1.5],
     shadowMapSize: 2048,
     shadowExtent: 230,
+    followShadowExtent: 100,
     terrainSpacing: 3,
     horizonSegments: 80,
     debrisDensity: 0.6,
@@ -48,6 +52,7 @@ export const GRAPHICS_PRESETS: Record<GraphicsQuality, GraphicsPreset> = {
     dpr: [1, 2],
     shadowMapSize: 4096,
     shadowExtent: 290,
+    followShadowExtent: 140,
     terrainSpacing: 2,
     horizonSegments: 128,
     debrisDensity: 1,
@@ -56,3 +61,9 @@ export const GRAPHICS_PRESETS: Record<GraphicsQuality, GraphicsPreset> = {
 }
 
 export const DEFAULT_GRAPHICS_QUALITY: GraphicsQuality = 'medium'
+
+/** Extra render layers. Layer 0 is the default. */
+export const RENDER_LAYERS = {
+  /** Drawn into shadow maps but not by the main camera, e.g. the player's body in first person. */
+  shadowOnly: 1,
+}
