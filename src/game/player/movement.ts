@@ -1,8 +1,6 @@
-export interface Vec3 {
-  x: number
-  y: number
-  z: number
-}
+import type { Vec3 } from '@/utils/vec3'
+
+export type { Vec3 }
 
 export interface MotorConfig {
   walkSpeed: number

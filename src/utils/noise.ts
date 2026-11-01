@@ -167,6 +167,25 @@ export function fbm3(noise: Noise3D, x: number, y: number, z: number, octaves: n
   return sum / norm
 }
 
+/** Ridged multifractal noise in roughly [0, 1] over 3D space, for ridges that wrap a sphere without seams. */
+export function ridged3(noise: Noise3D, x: number, y: number, z: number, octaves: number): number {
+  let sum = 0
+  let amplitude = 0.5
+  let frequency = 1
+  let previous = 1
+  let norm = 0
+  for (let o = 0; o < octaves; o++) {
+    let n = 1 - Math.abs(noise(x * frequency + o * 31.7, y * frequency + o * 11.3, z * frequency - o * 7.9))
+    n *= n
+    sum += n * amplitude * previous
+    norm += amplitude
+    previous = n
+    amplitude *= 0.5
+    frequency *= 2.03
+  }
+  return sum / norm
+}
+
 /** Ridged multifractal noise in roughly [0, 1]: sharp crests, suited to mountain ridges. */
 export function ridged2(noise: Noise2D, x: number, y: number, octaves: number): number {
   let sum = 0

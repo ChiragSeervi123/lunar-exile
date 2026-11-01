@@ -191,6 +191,60 @@ export interface RegionDef {
   enemySpawns: { enemyId: string; count: number }[]
 }
 
+/** The Moon as a whole: a sphere of provinces around the flat landing-site region. */
+export interface MoonDef {
+  name: string
+  /** Mean radius, meters. */
+  radius: number
+  seed: number
+  /** Region whose flat map becomes the landing site, at the +Y pole. */
+  landingRegion: string
+  /** How many provinces the surface is divided into. */
+  provinces: number
+}
+
+/** Kinds of lunar province; each has its own landscape, colour and resources. */
+export type ProvinceKind =
+  | 'landing-basin'
+  | 'mare'
+  | 'highlands'
+  | 'crater-field'
+  | 'mountains'
+  | 'rilles'
+  | 'regolith-plain'
+  | 'mineral'
+  | 'anomaly'
+  | 'farside-highlands'
+  | 'impact-basin'
+
+export interface ProvinceTypeDef {
+  label: string
+  description: string
+  /** Where provinces of this kind form: the Earth-facing near side, the far side, or either. */
+  side: 'near' | 'far' | 'any'
+  /** Rolling relief and small surface bumps, meters. */
+  relief: number
+  roughness: number
+  /** Crater density relative to the landing site's. */
+  craters: number
+  /** Height of mountain ridges, meters (0 = none). */
+  ridges: number
+  /** Depth of sinuous rilles, meters (0 = none). */
+  rilles: number
+  /** Height of stepped terraces, meters (0 = none): an unnatural, alien landscape. */
+  terraces: number
+  /** Base brightness: 0 = dark mare basalt, 1 = bright highland regolith. */
+  albedo: number
+  /** Subtle surface tint (linear RGB, 0..1) and how strongly it shows. */
+  tint?: { color: [number, number, number]; strength: number }
+  /** Rock and boulder density relative to the landing site's. */
+  rocks: number
+  /** Deposit types found here and their density per hectare. */
+  resources: { resourceId: string; density: number }[]
+  /** Names for provinces of this kind, used in order. */
+  names: string[]
+}
+
 export type PlayerStat = 'maxHealth' | 'maxOxygen' | 'maxStamina' | 'maxShield'
 
 export interface UpgradeDef {
