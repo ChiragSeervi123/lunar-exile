@@ -41,7 +41,15 @@ export const REGIONS = {
       ejecta: '#d6d4cc',
       rock: '#8e8c88',
     },
-    resourceNodes: [{ resourceId: 'regolith-deposit', density: 0.5 }],
+    // Deposits per hectare: about 40 dust patches down to two ancient structures across the site.
+    resourceNodes: [
+      { resourceId: 'lunar-dust', density: 1.1 },
+      { resourceId: 'regolith-deposit', density: 0.9 },
+      { resourceId: 'titanium-vein', density: 0.45 },
+      { resourceId: 'helium3-vein', density: 0.22 },
+      { resourceId: 'alien-crystal', density: 0.1 },
+      { resourceId: 'ancient-relic', density: 0.05 },
+    ],
     enemySpawns: [],
   },
 } satisfies Record<string, RegionDef>

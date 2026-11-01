@@ -16,7 +16,7 @@ import { createMotorInput, createMotorState, defaultFacing, type MotorState } fr
 import type { Terrain } from '@/game/world'
 import { axis, inputState, isHeld } from '@/input/inputState'
 import { usePlayerStore } from '@/stores/playerStore'
-import { cameraRuntime, placePlayer, playerMotion, playerRuntime, removePlayer } from '@/stores/runtime'
+import { cameraRuntime, miningRuntime, placePlayer, playerMotion, playerRuntime, removePlayer } from '@/stores/runtime'
 import type { RegionDef } from '@/types/content'
 import { DEG2RAD } from '@/utils/math'
 import { AstronautModel } from './AstronautModel'
@@ -66,6 +66,20 @@ export function Player({ region, terrain }: PlayerProps) {
     const ctl = controller.current
     const m = motor.current
     if (!b || !c || !ctl || !m) return
+    // A requested move (debug tools) places the body on the first surface at the new spot.
+    const warp = playerRuntime.teleport
+    if (warp) {
+      playerRuntime.teleport = null
+      const ground = terrain.heightAt(warp.x, warp.z)
+      const spot = findSpawn(world, rapier, terrain, { position: [warp.x, ground, warp.z], facing: m.facing }, m.facing)
+      const center = { x: spot.x, y: spot.y + BODY_CENTER, z: spot.z }
+      b.setTranslation(center, true)
+      b.setNextKinematicTranslation(center)
+      feet.current = { x: spot.x, y: spot.y, z: spot.z }
+      motor.current = createMotorState(m.facing)
+      placePlayer(spot.x, spot.y, spot.z, m.facing)
+      return
+    }
     const i = input.current
     i.forward = axis('moveForward', 'moveBack')
     i.strafe = axis('moveRight', 'moveLeft')
@@ -73,7 +87,8 @@ export function Player({ region, terrain }: PlayerProps) {
     i.jump = inputState.jumpQueued
     inputState.jumpQueued = false
     i.viewYaw = cameraRuntime.yaw
-    i.faceView = usePlayerStore.getState().cameraMode === 'first-person'
+    // Face where the camera looks in first person, and while mining so the tool points at the target.
+    i.faceView = usePlayerStore.getState().cameraMode === 'first-person' || miningRuntime.mining
 
     const dt = physics.timestep
     const impact = ctl.step(b, c, m, i, dt, feet.current)

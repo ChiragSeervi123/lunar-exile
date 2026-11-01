@@ -3,21 +3,70 @@
 
 export type ItemKind = 'resource' | 'consumable' | 'tool' | 'equipment'
 
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'very-rare' | 'extremely-rare'
+
 export interface ItemDef {
   name: string
+  description: string
   kind: ItemKind
+  rarity: Rarity
+  /** Most the player can carry. */
   stackSize: number
   /** Base value in credits; buy/sell prices derive from this. */
   value: number
+  /** Swatch colour for icons and notifications. */
+  color: string
 }
 
+/** Where on the terrain a deposit prefers to form. */
+export type Habitat = 'plains' | 'mare' | 'crater-floor' | 'crater-rim'
+
+/** Silhouettes the deposit renderer knows how to build. */
+export type DepositShape = 'patch' | 'blocks' | 'vein' | 'crystals' | 'spires' | 'relic'
+
+export interface DepositAppearance {
+  shape: DepositShape
+  color: string
+  /** Secondary colour: grains, tips, rock base or alien lights, depending on the shape. */
+  accent: string
+  /** Glow colour and strength; omit for natural-looking deposits. */
+  emissive?: string
+  emissiveIntensity?: number
+  metalness?: number
+  roughness?: number
+  /** Soft halo colour, for rare deposits that should catch the eye from a distance. */
+  halo?: string
+  /** Size multiplier range per deposit. */
+  size: [number, number]
+}
+
+/** A mineable deposit type. Instances are placed by the world generator. */
 export interface ResourceDef {
   name: string
+  description: string
   /** Item granted when mined. */
   itemId: string
-  /** Higher is slower to mine. */
+  category: 'mineral' | 'metal' | 'isotope' | 'crystal' | 'artifact'
+  rarity: Rarity
+  habitat: Habitat
+  /** Deposit health at size 1. */
+  health: number
+  /** Extraction difficulty: the tool's mining power is divided by this. */
   hardness: number
   yield: { min: number; max: number }
+  /** Play time before a depleted deposit grows back, seconds; null = gone for good. */
+  respawnSeconds: number | null
+  appearance: DepositAppearance
+}
+
+export interface ToolDef {
+  name: string
+  description: string
+  /** Deposit health removed per second at hardness 1. */
+  power: number
+  /** Reach from the astronaut's chest to the deposit, meters. */
+  range: number
+  beamColor: string
 }
 
 export interface DropDef {
@@ -137,6 +186,7 @@ export interface RegionDef {
   rocks: RockFieldDef
   sky: SkyDef
   palette: SurfacePaletteDef
+  /** Deposit types found here, with deposits per hectare of playable area. */
   resourceNodes: { resourceId: string; density: number }[]
   enemySpawns: { enemyId: string; count: number }[]
 }

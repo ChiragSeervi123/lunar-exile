@@ -1,19 +1,31 @@
 import { useEffect } from 'react'
 import { actionForCode } from '@/config/input'
 import { attachControls, pointerJustUnlocked } from '@/input/controls'
+import { saveProgress } from '@/save/saveGame'
 import { useGameStore } from '@/stores/gameStore'
 import { Hud } from '@/ui/hud/Hud'
 import { usePresence } from '@/ui/hooks/usePresence'
+import { InventoryPanel } from '@/ui/inventory/InventoryPanel'
 import { MainMenu } from '@/ui/menus/MainMenu'
 import { PauseMenu } from '@/ui/menus/PauseMenu'
 import { cx } from '@/utils/cx'
 import { GameCanvas } from './GameCanvas'
-import { continueGame, exitToMenu, pauseGame, resumeGame, startNewGame, togglePause } from './session'
+import {
+  closeInventory,
+  continueGame,
+  exitToMenu,
+  pauseGame,
+  resumeGame,
+  startNewGame,
+  toggleInventory,
+  togglePause,
+} from './session'
 
 /** Exit animation lengths, ms. */
 const MENU_EXIT = 1400
 const HUD_EXIT = 500
 const PAUSE_EXIT = 300
+const INVENTORY_EXIT = 300
 
 export function GameRoot() {
   const phase = useGameStore((s) => s.phase)
@@ -22,20 +34,27 @@ export function GameRoot() {
   const menu = usePresence(ready && phase === 'menu' ? true : null, MENU_EXIT)
   const hud = usePresence(phase !== 'menu' ? true : null, HUD_EXIT)
   const pause = usePresence(phase === 'paused' ? true : null, PAUSE_EXIT)
+  const inventory = usePresence(phase === 'inventory' ? true : null, INVENTORY_EXIT)
 
   // One set of input listeners for the whole app; removed again on unmount.
   useEffect(() => {
-    const detachControls = attachControls({ onPointerLockLost: pauseGame })
+    const detachControls = attachControls({ onPointerLockLost: pauseGame, onToggleInventory: toggleInventory })
     const onKey = (event: KeyboardEvent) => {
       if (actionForCode(event.code) !== 'pause' || event.defaultPrevented || event.repeat) return
       // Esc with the mouse captured only releases it; that already paused the game.
       if (pointerJustUnlocked()) return
       togglePause()
     }
+    // Closing or reloading the tab mid-game keeps the latest position and haul.
+    const onPageHide = () => {
+      if (useGameStore.getState().phase !== 'menu') saveProgress()
+    }
     window.addEventListener('keydown', onKey)
+    window.addEventListener('pagehide', onPageHide)
     return () => {
       detachControls()
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pagehide', onPageHide)
     }
   }, [])
 
@@ -43,6 +62,7 @@ export function GameRoot() {
     <div className="relative h-full w-full overflow-hidden bg-space">
       <GameCanvas />
       {hud.value && <Hud leaving={hud.leaving} />}
+      {inventory.value && <InventoryPanel leaving={inventory.leaving} onClose={closeInventory} />}
       {menu.value && (
         <MainMenu leaving={menu.leaving} hasSave={hasSave} onNewGame={startNewGame} onContinue={continueGame} />
       )}

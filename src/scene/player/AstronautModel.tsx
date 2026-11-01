@@ -1,17 +1,21 @@
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import type { Group } from 'three'
+import { MeshBasicMaterial, Vector3, type Group, type Mesh, type Object3D } from 'three'
 import { FRAME_PRIORITY } from '@/config/game'
 import { RENDER_LAYERS } from '@/config/graphics'
 import { PLAYER_CONTROLLER } from '@/config/player'
 import { PLAYER_BASE } from '@/data/player'
 import { LANDING_TIME, resolveAnimationState, wrapAngle } from '@/game/player'
 import type { Terrain } from '@/game/world'
-import { cameraRuntime, playerAnimation, playerMotion, playerRuntime } from '@/stores/runtime'
+import { cameraRuntime, miningRuntime, playerAnimation, playerMotion, playerRuntime } from '@/stores/runtime'
 import type { RegionDef } from '@/types/content'
 import { clamp, directionFromAngles } from '@/utils/math'
 import { createAstronautParts, RIG } from './astronautGeometry'
 import { createPose, POSE_KEYS, STRIDE, targetPose } from './astronautPose'
+import { createLensGeometry, createMiningToolGeometry, LENS_FIRING, LENS_IDLE, TOOL_TIP } from './toolGeometry'
+
+/** Shoulder height above the feet, for aiming the tool arm. */
+const SHOULDER_HEIGHT = RIG.pelvisHeight + RIG.waist + RIG.shoulder[1]
 
 /** How quickly joints blend toward the target pose (higher is snappier). */
 const POSE_SHARPNESS = 13
@@ -23,8 +27,9 @@ interface AstronautModelProps {
 }
 
 /**
- * Procedural low-poly astronaut, animated from the player's physics state. Swap this component
- * for a skinned GLTF model later: it only reads playerRuntime, playerMotion and cameraRuntime.
+ * Procedural low-poly astronaut holding its mining tool, animated from the player's physics and
+ * mining state. Swap this component for a skinned GLTF model later: it only reads playerRuntime,
+ * playerMotion, cameraRuntime and miningRuntime, and writes the tool's emitter position back.
  */
 export function AstronautModel({ region, terrain }: AstronautModelProps) {
   const { sun, earth } = region.sky
@@ -37,6 +42,22 @@ export function AstronautModel({ region, terrain }: AstronautModelProps) {
     [sun, earth],
   )
   useEffect(() => () => parts.dispose(), [parts])
+  const tool = useMemo(
+    () => ({
+      geometry: createMiningToolGeometry(),
+      lens: createLensGeometry(),
+      glow: new MeshBasicMaterial({ color: LENS_IDLE, toneMapped: false }),
+    }),
+    [],
+  )
+  useEffect(
+    () => () => {
+      tool.geometry.dispose()
+      tool.lens.dispose()
+      tool.glow.dispose()
+    },
+    [tool],
+  )
 
   const root = useRef<Group>(null)
   const pelvis = useRef<Group>(null)
@@ -50,7 +71,16 @@ export function AstronautModel({ region, terrain }: AstronautModelProps) {
   const hipR = useRef<Group>(null)
   const kneeL = useRef<Group>(null)
   const kneeR = useRef<Group>(null)
-  const anim = useRef({ pose: createPose(), target: createPose(), gait: 0, yaw: playerRuntime.facing, hidden: false })
+  const lens = useRef<Mesh>(null)
+  const tip = useRef<Object3D>(null)
+  const anim = useRef({
+    pose: createPose(),
+    target: createPose(),
+    gait: 0,
+    yaw: playerRuntime.facing,
+    hidden: false,
+    tip: new Vector3(),
+  })
 
   useFrame((state, delta) => {
     const a = anim.current
@@ -89,6 +119,17 @@ export function AstronautModel({ region, terrain }: AstronautModelProps) {
       const rise = -(nx * Math.sin(a.yaw) - nz * Math.cos(a.yaw)) / Math.max(ny, 0.2)
       a.target.lean += clamp(rise * 0.35, -0.12, 0.18)
     }
+    // Mining: point the tool arm at the target (the body already faces it) and brace with the other.
+    const firing = miningRuntime.mining
+    if (firing) {
+      const p = playerRuntime.renderPosition
+      const t = miningRuntime.point
+      const elevation = Math.atan2(t.y - p.y - SHOULDER_HEIGHT, Math.hypot(t.x - p.x, t.z - p.z))
+      a.target.shoulderR = clamp(Math.PI / 2 + elevation, 0.2, 2.8) + 0.025 * Math.sin(state.clock.elapsedTime * 45)
+      a.target.elbowR = 0.08
+      a.target.shoulderL = Math.max(a.target.shoulderL, 0.35)
+      a.target.elbowL = Math.max(a.target.elbowL, 0.75)
+    }
 
     const blend = 1 - Math.exp(-POSE_SHARPNESS * dt)
     for (const key of POSE_KEYS) a.pose[key] += (a.target[key] - a.pose[key]) * blend
@@ -110,6 +151,19 @@ export function AstronautModel({ region, terrain }: AstronautModelProps) {
       a.hidden = cameraRuntime.bodyHidden
       const layer = a.hidden ? RENDER_LAYERS.shadowOnly : 0
       body.traverse((object) => object.layers.set(layer))
+    }
+
+    const lensMaterial = lens.current?.material as MeshBasicMaterial | undefined
+    if (lensMaterial) {
+      if (firing) lensMaterial.color.copy(LENS_IDLE).lerp(LENS_FIRING, 0.75 + 0.25 * Math.sin(state.clock.elapsedTime * 47))
+      else lensMaterial.color.copy(LENS_IDLE)
+    }
+    // The beam leaves this tool unless the first-person view shows its own.
+    if (!a.hidden && tip.current) {
+      tip.current.getWorldPosition(a.tip)
+      miningRuntime.toolTip.x = a.tip.x
+      miningRuntime.toolTip.y = a.tip.y
+      miningRuntime.toolTip.z = a.tip.z
     }
   }, FRAME_PRIORITY.player)
 
@@ -136,6 +190,12 @@ export function AstronautModel({ region, terrain }: AstronautModelProps) {
             <mesh geometry={g.upperArm} material={suit} castShadow receiveShadow />
             <group ref={elbowR} position-y={-RIG.upperArm}>
               <mesh geometry={g.forearm} material={suit} castShadow receiveShadow />
+              {/* The mining tool in the right glove, pointing along the forearm. */}
+              <group position={[0, -0.32, -0.04]} rotation-x={-Math.PI / 2}>
+                <mesh geometry={tool.geometry} material={suit} castShadow receiveShadow />
+                <mesh ref={lens} geometry={tool.lens} material={tool.glow} />
+                <object3D ref={tip} position={TOOL_TIP} />
+              </group>
             </group>
           </group>
         </group>

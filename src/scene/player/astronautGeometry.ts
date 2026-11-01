@@ -1,21 +1,6 @@
-import {
-  BoxGeometry,
-  BufferAttribute,
-  CanvasTexture,
-  Color,
-  CylinderGeometry,
-  EquirectangularReflectionMapping,
-  Euler,
-  IcosahedronGeometry,
-  Matrix4,
-  MeshStandardMaterial,
-  Quaternion,
-  SphereGeometry,
-  SRGBColorSpace,
-  Vector3,
-  type BufferGeometry,
-} from 'three'
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { MeshStandardMaterial, SphereGeometry, type BufferGeometry } from 'three'
+import { box, cylinder, part, rock, segment } from '../lowPoly'
+import { createSkyReflection } from '../reflection'
 
 /**
  * Joint layout of the astronaut, meters. Feet at y = 0, facing -Z. Each limb segment is built
@@ -38,51 +23,13 @@ export const RIG = {
   neck: 0.5,
 }
 
-const COLORS = {
+export const SUIT_COLORS = {
   suit: '#e7e5df',
   panel: '#c6c4be',
   dark: '#383c44',
   accent: '#d2692a',
   metal: '#8d939c',
 }
-
-type Vec = [number, number, number]
-
-/** One piece of a segment: a primitive with a flat colour, moved into place relative to the pivot. */
-function part(
-  geometry: BufferGeometry,
-  color: string,
-  at: Vec = [0, 0, 0],
-  rotate: Vec = [0, 0, 0],
-  scale: Vec = [1, 1, 1],
-): BufferGeometry {
-  const piece = geometry.index ? geometry.toNonIndexed() : geometry
-  if (piece !== geometry) geometry.dispose()
-  piece.deleteAttribute('uv')
-  piece.applyMatrix4(
-    new Matrix4().compose(new Vector3(...at), new Quaternion().setFromEuler(new Euler(...rotate)), new Vector3(...scale)),
-  )
-  const { r, g, b } = new Color(color)
-  const colors = new Float32Array(piece.getAttribute('position').count * 3)
-  for (let i = 0; i < colors.length; i += 3) colors.set([r, g, b], i)
-  piece.setAttribute('color', new BufferAttribute(colors, 3))
-  return piece
-}
-
-/** Merges a segment's pieces into one mesh, so each segment is a single draw call. */
-function segment(pieces: BufferGeometry[]): BufferGeometry {
-  const merged = mergeGeometries(pieces)
-  pieces.forEach((piece) => piece.dispose())
-  if (!merged) throw new Error('Astronaut segment pieces have mismatched attributes')
-  merged.computeVertexNormals()
-  merged.computeBoundingSphere()
-  return merged
-}
-
-const cylinder = (top: number, bottom: number, height: number, sides = 7) =>
-  new CylinderGeometry(top, bottom, height, sides)
-const box = (w: number, h: number, d: number) => new BoxGeometry(w, h, d)
-const rock = (radius: number, detail = 0) => new IcosahedronGeometry(radius, detail)
 
 export interface AstronautGeometry {
   pelvis: BufferGeometry
@@ -97,7 +44,7 @@ export interface AstronautGeometry {
 
 /** Low-poly spacesuit, about a thousand triangles. Arms and legs are shared by both sides. */
 export function createAstronautGeometry(): AstronautGeometry {
-  const { suit, panel, dark, accent, metal } = COLORS
+  const { suit, panel, dark, accent, metal } = SUIT_COLORS
   return {
     pelvis: segment([
       part(box(0.36, 0.2, 0.26), suit),
@@ -154,50 +101,6 @@ export function createAstronautGeometry(): AstronautGeometry {
 
 type Direction = [number, number, number]
 
-/** Equirectangular texture coordinates of a direction, matching three's equirect lookup. */
-function equirect(d: Direction): [number, number] {
-  const u = Math.atan2(d[2], d[0]) / (Math.PI * 2) + 0.5
-  const v = Math.asin(Math.min(1, Math.max(-1, d[1]))) / Math.PI + 0.5
-  return [u, 1 - v]
-}
-
-/**
- * A tiny painted environment for the visor to reflect: black sky, the bright regolith horizon, the
- * sun and Earth. Far cheaper than rendering a real environment map.
- */
-function createVisorEnvironment(sun: Direction, earth: Direction | null): CanvasTexture {
-  const canvas = document.createElement('canvas')
-  canvas.width = 256
-  canvas.height = 128
-  const ctx = canvas.getContext('2d')
-  if (ctx) {
-    const sky = ctx.createLinearGradient(0, 0, 0, canvas.height)
-    sky.addColorStop(0, '#020309')
-    sky.addColorStop(0.47, '#0d1424')
-    sky.addColorStop(0.5, '#cbc8c0')
-    sky.addColorStop(0.62, '#8e8b85')
-    sky.addColorStop(1, '#45433f')
-    ctx.fillStyle = sky
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    const glow = (dir: Direction, radius: number, color: string) => {
-      const [u, v] = equirect(dir)
-      const x = u * canvas.width
-      const y = v * canvas.height
-      const spot = ctx.createRadialGradient(x, y, 0, x, y, radius)
-      spot.addColorStop(0, color)
-      spot.addColorStop(1, 'rgba(0,0,0,0)')
-      ctx.fillStyle = spot
-      ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2)
-    }
-    glow(sun, 18, 'rgba(255,248,232,1)')
-    if (earth) glow(earth, 7, 'rgba(110,165,255,1)')
-  }
-  const texture = new CanvasTexture(canvas)
-  texture.mapping = EquirectangularReflectionMapping
-  texture.colorSpace = SRGBColorSpace
-  return texture
-}
-
 export interface AstronautParts {
   geometry: AstronautGeometry
   suit: MeshStandardMaterial
@@ -207,7 +110,7 @@ export interface AstronautParts {
 
 export function createAstronautParts(sun: Direction, earth: Direction | null): AstronautParts {
   const geometry = createAstronautGeometry()
-  const environment = createVisorEnvironment(sun, earth)
+  const environment = createSkyReflection(sun, earth)
   const suit = new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.72, metalness: 0.05 })
   // Gold-coated sun visor, like a real EVA helmet.
   const visor = new MeshStandardMaterial({

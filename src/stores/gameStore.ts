@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
-export type GamePhase = 'menu' | 'playing' | 'paused'
+/** 'inventory': the backpack is open over a running world, with gameplay input and mouse capture released. */
+export type GamePhase = 'menu' | 'playing' | 'inventory' | 'paused'
 
 interface GameState {
   phase: GamePhase

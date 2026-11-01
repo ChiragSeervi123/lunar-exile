@@ -17,6 +17,8 @@ export interface GraphicsPreset {
   /** Multiplier on the region's small-debris density (decorative only). */
   debrisDensity: number
   starCount: number
+  /** Most mining sparks and dust particles alive at once. */
+  particleBudget: number
 }
 
 export const GRAPHICS_QUALITIES: GraphicsQuality[] = ['low', 'medium', 'high']
@@ -33,6 +35,7 @@ export const GRAPHICS_PRESETS: Record<GraphicsQuality, GraphicsPreset> = {
     horizonSegments: 48,
     debrisDensity: 0.3,
     starCount: 3000,
+    particleBudget: 120,
   },
   medium: {
     label: 'Medium',
@@ -45,6 +48,7 @@ export const GRAPHICS_PRESETS: Record<GraphicsQuality, GraphicsPreset> = {
     horizonSegments: 80,
     debrisDensity: 0.6,
     starCount: 6000,
+    particleBudget: 240,
   },
   high: {
     label: 'High',
@@ -57,6 +61,7 @@ export const GRAPHICS_PRESETS: Record<GraphicsQuality, GraphicsPreset> = {
     horizonSegments: 128,
     debrisDensity: 1,
     starCount: 10000,
+    particleBudget: 400,
   },
 }
 

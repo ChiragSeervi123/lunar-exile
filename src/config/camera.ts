@@ -52,6 +52,8 @@ export const CAMERA = {
 
   /** Closer than this to the astronaut's head, the body is hidden from the camera, meters. */
   hideBodyDistance: 0.75,
+  /** Largest camera tremble from mining, radians at full shake. */
+  shake: 0.02,
 
   /** Aspect ratio the horizontal framing offsets are tuned for; narrower screens scale them down. */
   referenceAspect: 16 / 9,

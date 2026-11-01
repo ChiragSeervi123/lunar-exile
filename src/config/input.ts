@@ -1,6 +1,6 @@
 /**
  * Action -> KeyboardEvent.code values. Codes are physical key positions, so WASD stays in place on
- * other layouts. Read through this table, never hardcode keys.
+ * other layouts. Mouse buttons use 'Mouse<button>' codes. Read through this table, never hardcode keys.
  */
 export const KEYBINDINGS = {
   moveForward: ['KeyW', 'ArrowUp'],
@@ -10,6 +10,9 @@ export const KEYBINDINGS = {
   sprint: ['ShiftLeft', 'ShiftRight'],
   jump: ['Space'],
   toggleCamera: ['KeyV'],
+  /** Hold to mine the deposit under the crosshair (needs the mouse captured). */
+  mine: ['Mouse0'],
+  /** Interact; on a deposit, holding it mines too, which works without mouse capture. */
   interact: ['KeyE'],
   inventory: ['KeyI'],
   pause: ['Escape'],
@@ -30,6 +33,7 @@ export function actionForCode(code: string): InputAction | undefined {
 /** Short on-screen label for a KeyboardEvent.code, e.g. 'KeyE' -> 'E', 'Escape' -> 'ESC'. */
 export function keyLabel(code: string): string {
   if (code === 'Escape') return 'ESC'
+  if (code === 'Mouse0') return 'LMB'
   if (code.startsWith('Key')) return code.slice(3)
   if (code.startsWith('Digit')) return code.slice(5)
   if (code.startsWith('Shift')) return 'SHIFT'

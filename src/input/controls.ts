@@ -46,22 +46,36 @@ export function pointerJustUnlocked(): boolean {
 interface ControlsOptions {
   /** The mouse was released during play (Esc, alt-tab): the game should pause. */
   onPointerLockLost: () => void
+  /** The inventory key was pressed while playing or with the inventory open. */
+  onToggleInventory: () => void
 }
+
+/** Input code for a mouse button, as used in KEYBINDINGS. */
+const mouseCode = (button: number) => `Mouse${button}`
 
 /**
  * Installs the gameplay keyboard and mouse listeners once. Gameplay keys are only taken while
- * playing, so menus and settings keep normal keyboard behaviour. Returns a cleanup function.
+ * playing (the inventory key also while the inventory is open), so menus and settings keep normal
+ * keyboard behaviour. Returns a cleanup function.
  */
-export function attachControls({ onPointerLockLost }: ControlsOptions): () => void {
+export function attachControls({ onPointerLockLost, onToggleInventory }: ControlsOptions): () => void {
   const onKeyDown = (event: KeyboardEvent) => {
-    if (!isPlaying() || isEditable(event.target)) return
+    if (isEditable(event.target)) return
     const action = actionForCode(event.code)
-    if (!action || action === 'pause') return
+    if (action === 'inventory') {
+      const phase = useGameStore.getState().phase
+      if (phase !== 'playing' && phase !== 'inventory') return
+      event.preventDefault()
+      if (!event.repeat) onToggleInventory()
+      return
+    }
+    if (!isPlaying() || !action || action === 'pause') return
     // No page scroll on Space, and no activating whatever button still has focus.
     event.preventDefault()
     inputState.held.add(event.code)
     if (event.repeat) return
     if (action === 'jump') inputState.jumpQueued = true
+    else if (action === 'interact') inputState.interactQueued = true
     else if (action === 'toggleCamera') usePlayerStore.getState().toggleCameraMode()
   }
 
@@ -79,7 +93,14 @@ export function attachControls({ onPointerLockLost }: ControlsOptions): () => vo
   }
 
   const onMouseDown = (event: MouseEvent) => {
-    if (isPlaying() && event.button === 0 && event.target instanceof HTMLCanvasElement) lockPointer()
+    if (!isPlaying()) return
+    // With the mouse captured, buttons are gameplay input; otherwise a click on the scene captures it.
+    if (document.pointerLockElement) inputState.held.add(mouseCode(event.button))
+    else if (event.button === 0 && event.target instanceof HTMLCanvasElement) lockPointer()
+  }
+
+  const onMouseUp = (event: MouseEvent) => {
+    inputState.held.delete(mouseCode(event.button))
   }
 
   const onPointerLockChange = () => {
@@ -96,6 +117,7 @@ export function attachControls({ onPointerLockLost }: ControlsOptions): () => vo
   window.addEventListener('keyup', onKeyUp)
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mousedown', onMouseDown)
+  window.addEventListener('mouseup', onMouseUp)
   window.addEventListener('blur', onBlur)
   document.addEventListener('pointerlockchange', onPointerLockChange)
   const unsubscribe = useGameStore.subscribe((state, previous) => {
@@ -110,6 +132,7 @@ export function attachControls({ onPointerLockLost }: ControlsOptions): () => vo
     window.removeEventListener('keyup', onKeyUp)
     window.removeEventListener('mousemove', onMouseMove)
     window.removeEventListener('mousedown', onMouseDown)
+    window.removeEventListener('mouseup', onMouseUp)
     window.removeEventListener('blur', onBlur)
     document.removeEventListener('pointerlockchange', onPointerLockChange)
     unsubscribe()

@@ -13,3 +13,4 @@ export const PLAYER_BASE = {
 
 export const STARTING_CREDITS = 0
 export const STARTING_REGION = 'landing-site' as const
+export const STARTING_TOOL = 'basic-mining-tool' as const

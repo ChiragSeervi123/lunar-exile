@@ -2,8 +2,21 @@ import { actionLabel } from '@/config/input'
 import { getRegion } from '@/data/regions'
 import { useWorldStore } from '@/stores/worldStore'
 import { cx } from '@/utils/cx'
-import { CameraModeIndicator, ControlsHint, LookHint, Reticle } from './ControlHints'
+import { CameraModeIndicator, ControlsHint, LookHint } from './ControlHints'
+import { MiningHud } from './MiningHud'
+import { Notifications } from './Notifications'
 import { SurvivalBars } from './SurvivalBars'
+
+function KeyHint({ action, label, className }: { action: 'pause' | 'inventory'; label: string; className?: string }) {
+  return (
+    <span className={cx('flex items-center gap-3', className)}>
+      <kbd className="border border-lunar-700 px-1.5 py-0.5 font-ui text-[10px] tracking-[0.15em] text-lunar-200">
+        {actionLabel(action)}
+      </kbd>
+      {label}
+    </span>
+  )
+}
 
 /** In-game overlay. Never captures pointer events, so the canvas stays interactive. */
 export function Hud({ leaving }: { leaving: boolean }) {
@@ -21,11 +34,10 @@ export function Hud({ leaving }: { leaving: boolean }) {
         <p className="mt-1 text-[11px] font-semibold tracking-[0.35em] text-lunar-500">{region.coordinates}</p>
       </div>
 
-      <div className="absolute right-6 top-6 flex items-center gap-3 text-[11px] font-semibold tracking-[0.3em] text-lunar-400 sm:right-10 sm:top-8">
-        <kbd className="border border-lunar-700 px-1.5 py-0.5 font-ui text-[10px] tracking-[0.15em] text-lunar-200">
-          {actionLabel('pause')}
-        </kbd>
-        PAUSE
+      <div className="absolute right-6 top-6 flex items-center gap-5 text-[11px] font-semibold tracking-[0.3em] text-lunar-400 sm:right-10 sm:top-8">
+        {/* Narrow screens keep just the pause hint, clear of the region name. */}
+        <KeyHint action="inventory" label="INVENTORY" className="hidden sm:flex" />
+        <KeyHint action="pause" label="PAUSE" />
       </div>
 
       <div className="absolute bottom-6 left-6 sm:bottom-10 sm:left-10">
@@ -33,7 +45,8 @@ export function Hud({ leaving }: { leaving: boolean }) {
       </div>
 
       <CameraModeIndicator />
-      <Reticle />
+      <MiningHud />
+      <Notifications />
       {!leaving && <ControlsHint />}
       <LookHint />
 

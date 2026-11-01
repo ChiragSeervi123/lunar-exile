@@ -1,7 +1,7 @@
 import { PerspectiveCamera } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import { useRapier } from '@react-three/rapier'
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, type ReactNode } from 'react'
 import { Vector3, type PerspectiveCamera as PerspectiveCameraImpl } from 'three'
 import { CAMERA } from '@/config/camera'
 import { COLLISION, FRAME_PRIORITY } from '@/config/game'
@@ -10,7 +10,7 @@ import type { Terrain } from '@/game/world'
 import { inputState } from '@/input/inputState'
 import { useGameStore } from '@/stores/gameStore'
 import { usePlayerStore } from '@/stores/playerStore'
-import { cameraRuntime, playerRuntime } from '@/stores/runtime'
+import { cameraRuntime, miningRuntime, playerRuntime } from '@/stores/runtime'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { RegionDef } from '@/types/content'
 import { clamp, DEG2RAD, easeInOutCubic, lerp } from '@/utils/math'
@@ -22,14 +22,19 @@ type ViewMode = 'menu' | CameraMode
 interface CameraRigProps {
   region: RegionDef
   terrain: Terrain
+  /** Objects that move with the camera, such as the first-person tool. */
+  children?: ReactNode
 }
+
+/** Players who ask their system for less motion get no camera shake. */
+const reducedMotion = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null
 
 /**
  * The only camera controller: the menu pan, third- and first-person follow with mouse-look, and
  * smooth blends between them (a long arcing flight between menu and game, a quick blend between
  * the two follow modes). Must sit inside <Physics> for its collision probe.
  */
-export function CameraRig({ region, terrain }: CameraRigProps) {
+export function CameraRig({ region, terrain, children }: CameraRigProps) {
   const cameraRef = useRef<PerspectiveCameraImpl>(null)
   const { world, rapier } = useRapier()
   const inMenu = useGameStore((s) => s.phase === 'menu')
@@ -132,6 +137,13 @@ export function CameraRig({ region, terrain }: CameraRigProps) {
       if (camera.position.y < ground) camera.position.y = ground
     }
     camera.lookAt(r.look)
+    // Mining tremble: a small, quickly fading wobble of the view itself, not of where it aims.
+    const shake = miningRuntime.shake
+    if (following && shake > 0 && !reducedMotion?.matches) {
+      const k = shake * shake * CAMERA.shake * 0.5
+      camera.rotateX(k * (Math.sin(time * 61) + Math.sin(time * 23.7)))
+      camera.rotateY(k * (Math.sin(time * 47.3) + Math.sin(time * 31.1)))
+    }
 
     cameraRuntime.position.x = camera.position.x
     cameraRuntime.position.y = camera.position.y
@@ -142,5 +154,9 @@ export function CameraRig({ region, terrain }: CameraRigProps) {
     cameraRuntime.bodyHidden = following && camera.position.distanceTo(r.head) < CAMERA.hideBodyDistance
   }, FRAME_PRIORITY.camera)
 
-  return <PerspectiveCamera ref={cameraRef} makeDefault fov={CAMERA.fov.menu} near={CAMERA.near} far={CAMERA.far} />
+  return (
+    <PerspectiveCamera ref={cameraRef} makeDefault fov={CAMERA.fov.menu} near={CAMERA.near} far={CAMERA.far}>
+      {children}
+    </PerspectiveCamera>
+  )
 }

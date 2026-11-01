@@ -4,6 +4,8 @@ import { Suspense, useRef } from 'react'
 import { FRAME_PRIORITY, PHYSICS } from '@/config/game'
 import { GRAPHICS_PRESETS } from '@/config/graphics'
 import { CameraRig } from '@/scene/camera/CameraRig'
+import { Mining } from '@/scene/mining/Mining'
+import { FirstPersonTool } from '@/scene/player/FirstPersonTool'
 import { Player } from '@/scene/player/Player'
 import { Sky } from '@/scene/sky/Sky'
 import { LunarWorld } from '@/scene/world/LunarWorld'
@@ -24,8 +26,11 @@ export function GameCanvas() {
       <Suspense fallback={null}>
         {/* Runs behind the menu too (static bodies only, nearly free), so queries are ready when a game starts. */}
         <Physics gravity={PHYSICS.gravity} paused={phase === 'paused'} updatePriority={FRAME_PRIORITY.physics}>
-          <CameraRig region={region} terrain={terrain} />
+          <CameraRig region={region} terrain={terrain}>
+            <FirstPersonTool />
+          </CameraRig>
           <LunarWorld preset={preset} />
+          <Mining region={region} particleBudget={preset.particleBudget} />
           {phase !== 'menu' && <Player region={region} terrain={terrain} />}
         </Physics>
         <SceneReadySignal />

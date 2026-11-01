@@ -26,25 +26,37 @@ export function CameraModeIndicator() {
 
 const MOVE_KEYS = [KEYBINDINGS.moveForward[0], KEYBINDINGS.moveLeft[0], KEYBINDINGS.moveBack[0], KEYBINDINGS.moveRight[0]]
 
-/** Keyboard reminder shown for the first seconds of play; hidden on touch-sized screens. */
+/** Keyboard reminder shown for the first seconds of play, above the survival bars; hidden on touch-sized screens. */
 export function ControlsHint() {
-  const items: [string, string][] = [
-    [MOVE_KEYS.map(keyLabel).join(''), 'MOVE'],
-    [actionLabel('sprint'), 'SPRINT'],
-    [actionLabel('jump'), 'JUMP'],
-    [actionLabel('toggleCamera'), 'CAMERA'],
-    ['MOUSE', 'LOOK'],
+  const rows: [string, string][][] = [
+    [
+      [MOVE_KEYS.map(keyLabel).join(''), 'MOVE'],
+      [actionLabel('sprint'), 'SPRINT'],
+      [actionLabel('jump'), 'JUMP'],
+      [actionLabel('toggleCamera'), 'CAMERA'],
+      ['MOUSE', 'LOOK'],
+    ],
+    [
+      [actionLabel('mine'), 'MINE'],
+      [actionLabel('interact'), 'COLLECT'],
+      [actionLabel('inventory'), 'INVENTORY'],
+    ],
   ]
   return (
-    <div className="absolute inset-x-0 bottom-10 hidden animate-hints justify-center sm:flex">
-      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[11px] font-semibold tracking-[0.3em] text-lunar-400">
-        {items.map(([key, label]) => (
-          <span key={label} className="flex items-center gap-2">
-            <Key>{key}</Key>
-            {label}
-          </span>
-        ))}
-      </div>
+    <div className="absolute inset-x-0 bottom-48 hidden animate-hints flex-col items-center gap-3 px-6 sm:flex">
+      {rows.map((items, i) => (
+        <div
+          key={i}
+          className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[11px] font-semibold tracking-[0.3em] text-lunar-400 [text-shadow:0_0_10px_rgb(0_0_0/0.6)]"
+        >
+          {items.map(([key, label]) => (
+            <span key={label} className="flex items-center gap-2">
+              <Key>{key}</Key>
+              {label}
+            </span>
+          ))}
+        </div>
+      ))}
     </div>
   )
 }
@@ -59,11 +71,4 @@ export function LookHint() {
       CLICK TO LOOK AROUND · OR DRAG
     </p>
   )
-}
-
-/** A faint centre dot in first person, to aim the view. */
-export function Reticle() {
-  const firstPerson = usePlayerStore((s) => s.cameraMode === 'first-person')
-  if (!firstPerson) return null
-  return <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-1/2 rounded-full bg-lunar-50/70" />
 }
