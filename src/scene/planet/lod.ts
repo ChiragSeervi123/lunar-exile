@@ -2,10 +2,12 @@ import { nodeKey, nodeSize, type CubeNode } from '@/game/planet'
 import type { Vec3 } from '@/utils/vec3'
 import type { ChunkWish } from './chunkBuilder'
 
-/** Where a built chunk is: a bounding sphere in world space. */
+/** Where a built chunk is: a bounding sphere in world space, and how high its ground reaches. */
 export interface ChunkBounds {
   center: Vec3
   radius: number
+  /** Distance from the Moon's centre to the chunk's highest ground. */
+  top: number
 }
 
 export interface LodOptions {
@@ -51,11 +53,12 @@ export function selectLod(
   // Angle (seen from the centre) between straight below the camera and its horizon on the occluder.
   const camHorizon = camDist > occluder ? Math.acos(occluder / camDist) : 0
 
+  // Hidden when the chunk lies wholly beyond the horizon of a sphere just inside the lowest ground,
+  // even counting its highest point (mountains rise into view from farther away).
   const hidden = (b: ChunkBounds) => {
     if (camDist <= occluder) return false
     const c = Math.hypot(b.center.x, b.center.y, b.center.z)
-    const top = c + b.radius
-    const nodeHorizon = top > occluder ? Math.acos(occluder / top) : 0
+    const nodeHorizon = b.top > occluder ? Math.acos(occluder / b.top) : 0
     const cosAngle = (camera.x * b.center.x + camera.y * b.center.y + camera.z * b.center.z) / (camDist * c)
     const angle = Math.acos(Math.min(1, Math.max(-1, cosAngle)))
     const spread = Math.asin(Math.min(1, b.radius / c))

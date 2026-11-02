@@ -52,9 +52,12 @@ export interface Planet {
 /** The landing-site map is used unchanged out to this distance, and blended into the Moon by the second. */
 const CHART_PURE = 320
 const CHART_BLEND = 480
-/** Ground can sit this far below or above the radius (basin floors, mountain peaks), with margin. */
-const MIN_HEIGHT = -280
-const MAX_HEIGHT = 340
+/**
+ * Ground stays within these heights relative to the radius, with margin (measured: the impact basin
+ * floor at about −98 m, mountain peaks at about +163 m). Horizon culling relies on the lower bound.
+ */
+const MIN_HEIGHT = -140
+const MAX_HEIGHT = 220
 /** Offset for normals by finite differences, meters (as on the flat map). */
 const NORMAL_STEP = 0.75
 

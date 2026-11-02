@@ -44,7 +44,7 @@ const linear = (hex: string): RGB => {
 }
 
 /** A drawable mesh for a finished chunk, hidden until the level of detail picks it. */
-function chunkRecord(chunk: ChunkMesh, material: MeshStandardMaterial, frame: number): ChunkRecord {
+function chunkRecord(chunk: ChunkMesh, material: MeshStandardMaterial, planetRadius: number, frame: number): ChunkRecord {
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new BufferAttribute(chunk.positions, 3))
   geometry.setAttribute('normal', new BufferAttribute(chunk.normals!, 3))
@@ -60,7 +60,10 @@ function chunkRecord(chunk: ChunkMesh, material: MeshStandardMaterial, frame: nu
   mesh.visible = false
   planetTerrainStatus.built++
   planetTerrainStatus.buildMs += (chunk.buildMs - planetTerrainStatus.buildMs) * 0.1
-  return { mesh, bounds: { center: vec3(...chunk.center), radius: chunk.radius }, triangles: chunk.indices.length / 3, lastUsed: frame }
+  return {
+    mesh,
+    bounds: { center: vec3(...chunk.center), radius: chunk.radius, top: planetRadius + chunk.maxHeight },
+    triangles: chunk.indices.length / 3, lastUsed: frame }
 }
 
 /**
@@ -96,7 +99,7 @@ export function PlanetTerrain({ planet, palette, depth, split }: PlanetTerrainPr
     const records = new Map<number, ChunkRecord>()
     const add = (chunk: ChunkMesh) => {
       if (records.has(chunk.key)) return
-      const record = chunkRecord(chunk, material, 0)
+      const record = chunkRecord(chunk, material, planet.radius, 0)
       root.add(record.mesh)
       records.set(chunk.key, record)
     }
@@ -126,7 +129,7 @@ export function PlanetTerrain({ planet, palette, depth, split }: PlanetTerrainPr
 
     for (const chunk of builder.take(PLANET_TERRAIN.uploadsPerFrame)) {
       if (records.has(chunk.key)) continue
-      const record = chunkRecord(chunk, material, s.frame)
+      const record = chunkRecord(chunk, material, planet.radius, s.frame)
       root.add(record.mesh)
       records.set(chunk.key, record)
     }
