@@ -74,8 +74,24 @@ export function createNoise2D(rng: Rng): Noise2D {
   }
 }
 
-/** 3D simplex noise in roughly [-1, 1]. */
+/**
+ * 3D simplex noise in roughly [-1, 1]. Its kernel (radius² 0.6, as in Gustavson's reference) is wider
+ * than the simplex it sums, so the result jumps slightly at simplex borders: fine for shaping rocks,
+ * not for ground that is walked on. Use `createSmoothNoise3D` there.
+ */
 export function createNoise3D(rng: Rng): Noise3D {
+  return simplex3(rng, 0.6, 32)
+}
+
+/** 3D simplex noise in roughly [-1, 1] that is continuous everywhere (kernel radius² 0.5). */
+export function createSmoothNoise3D(rng: Rng): Noise3D {
+  return simplex3(rng, 0.5, SMOOTH_SCALE)
+}
+
+/** Brings the radius² 0.5 kernel's output to the same roughly [-1, 1] range as the 0.6 kernel's. */
+const SMOOTH_SCALE = 75
+
+function simplex3(rng: Rng, kernel: number, scale: number): Noise3D {
   const { perm, grad } = buildPermutation(rng)
   return (x, y, z) => {
     const s = (x + y + z) * F3
@@ -110,31 +126,31 @@ export function createNoise3D(rng: Rng): Noise3D {
     const kk = k & 255
 
     let n = 0
-    let t0 = 0.6 - x0 * x0 - y0 * y0 - z0 * z0
+    let t0 = kernel - x0 * x0 - y0 * y0 - z0 * z0
     if (t0 > 0) {
       const g = grad[ii + perm[jj + perm[kk]]]
       t0 *= t0
       n += t0 * t0 * (GRAD3[g] * x0 + GRAD3[g + 1] * y0 + GRAD3[g + 2] * z0)
     }
-    let t1 = 0.6 - x1 * x1 - y1 * y1 - z1 * z1
+    let t1 = kernel - x1 * x1 - y1 * y1 - z1 * z1
     if (t1 > 0) {
       const g = grad[ii + i1 + perm[jj + j1 + perm[kk + k1]]]
       t1 *= t1
       n += t1 * t1 * (GRAD3[g] * x1 + GRAD3[g + 1] * y1 + GRAD3[g + 2] * z1)
     }
-    let t2 = 0.6 - x2 * x2 - y2 * y2 - z2 * z2
+    let t2 = kernel - x2 * x2 - y2 * y2 - z2 * z2
     if (t2 > 0) {
       const g = grad[ii + i2 + perm[jj + j2 + perm[kk + k2]]]
       t2 *= t2
       n += t2 * t2 * (GRAD3[g] * x2 + GRAD3[g + 1] * y2 + GRAD3[g + 2] * z2)
     }
-    let t3 = 0.6 - x3 * x3 - y3 * y3 - z3 * z3
+    let t3 = kernel - x3 * x3 - y3 * y3 - z3 * z3
     if (t3 > 0) {
       const g = grad[ii + 1 + perm[jj + 1 + perm[kk + 1]]]
       t3 *= t3
       n += t3 * t3 * (GRAD3[g] * x3 + GRAD3[g + 1] * y3 + GRAD3[g + 2] * z3)
     }
-    return 32 * n
+    return scale * n
   }
 }
 

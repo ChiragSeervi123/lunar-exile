@@ -106,7 +106,7 @@ export const PROVINCE_TYPES = {
     relief: 12,
     roughness: 0.7,
     craters: 0.8,
-    ridges: 220,
+    ridges: 160,
     rilles: 0,
     terraces: 0,
     albedo: 0.7,

@@ -1,7 +1,7 @@
 import { createSample, getRegionTerrain, type Terrain, type TerrainSample } from '@/game/world'
 import type { MoonDef, RegionDef } from '@/types/content'
 import { clamp, directionFromAngles, lerp, smoothstep } from '@/utils/math'
-import { createNoise3D, fbm3, ridged3 } from '@/utils/noise'
+import { createSmoothNoise3D, fbm3, ridged3 } from '@/utils/noise'
 import { createRng, deriveSeed, randRange } from '@/utils/random'
 import { cross, dot, normalize, setVec, vec3, type Vec3 } from '@/utils/vec3'
 import { createSphereCrater, createSphereCraterField, type SphereCrater } from './craters'
@@ -68,11 +68,13 @@ const NORMAL_STEP = 0.75
 export function createPlanet(moon: MoonDef, landingRegion: RegionDef, landingRegionId: string): Planet {
   const R = moon.radius
   const seed = moon.seed
-  const noise = (salt: string) => createNoise3D(createRng(deriveSeed(seed, salt)))
+  // Ground must be continuous, so only the smooth noise variant is used here.
+  const noise = (salt: string) => createSmoothNoise3D(createRng(deriveSeed(seed, salt)))
   const relief = noise('relief')
   const detail = noise('detail')
   const massifs = noise('massifs')
   const ridges = noise('ridges')
+  const ridgesFine = noise('ridges-fine')
   const rilles = noise('rilles')
   const albedoNoise = noise('albedo')
   const veins = noise('veins')
@@ -131,24 +133,29 @@ export function createPlanet(moon: MoonDef, landingRegion: RegionDef, landingReg
       b.relief * 0.3 * fbm3(relief, pos.x / 140 + 31.7, pos.y / 140 - 12.3, pos.z / 140 + 5.9, 3) +
       b.roughness * (0.7 * detail(pos.x / 13, pos.y / 13, pos.z / 13) + 0.3 * detail(pos.x / 4.5, pos.y / 4.5, pos.z / 4.5))
 
-    // Mountain ranges: ridged crests gathered into separate massifs.
+    // Mountain ranges: sharp crests gathered into separate massifs. Two single-octave ridge layers
+    // rather than a ridged fractal, which piles every octave's slope together into sheer walls;
+    // flanks stay mostly climbable, with steep crests.
+    // Each feature is skipped only where its blended amplitude is exactly zero, so it fades out at
+    // province borders instead of switching off.
     let mountain = 0
-    if (b.ridges > 0.5) {
+    if (b.ridges > 0) {
       const massif = smoothstep(-0.25, 0.55, fbm3(massifs, pos.x / 1400, pos.y / 1400, pos.z / 1400, 2))
       if (massif > 0) {
-        const ridge = ridged3(ridges, pos.x / 650, pos.y / 650, pos.z / 650, 4)
-        h += b.ridges * massif * (0.15 + 0.85 * ridge * ridge)
+        const r1 = 1 - Math.abs(ridges(pos.x / 1100, pos.y / 1100, pos.z / 1100))
+        const r2 = 1 - Math.abs(ridgesFine(pos.x / 420, pos.y / 420, pos.z / 420))
+        const ridge = 0.7 * r1 * r1 + 0.3 * r2 * r2
+        h += b.ridges * massif * (0.2 + 0.8 * ridge)
         mountain = massif * ridge
       }
     }
-    // Rilles: winding channels along the zero line of a noise field.
-    if (b.rilles > 0.5) {
+    // Rilles: winding channels along the zero line of a noise field, with flat floors.
+    if (b.rilles > 0) {
       const n = Math.abs(fbm3(rilles, pos.x / 900, pos.y / 900, pos.z / 900, 2))
-      const channel = 1 - smoothstep(0, 0.07, n)
-      h -= b.rilles * channel
+      h -= b.rilles * (1 - smoothstep(0, 0.1, n))
     }
     // Terraces: ground stepped into level shelves with steep, walkable risers.
-    if (b.terraces > 0.5) {
+    if (b.terraces > 0) {
       const step = 7
       const level = h / step
       const floor = Math.floor(level)

@@ -19,6 +19,12 @@ export interface GraphicsPreset {
   starCount: number
   /** Most mining sparks and dust particles alive at once. */
   particleBudget: number
+  /**
+   * Moon terrain detail: the deepest chunk level (each level halves vertex spacing; 7 is about
+   * 1.3 m between vertices, 6 about 2.7 m), and how early chunks subdivide, in chunk sizes of distance.
+   */
+  terrainDepth: number
+  terrainSplit: number
 }
 
 export const GRAPHICS_QUALITIES: GraphicsQuality[] = ['low', 'medium', 'high']
@@ -36,6 +42,8 @@ export const GRAPHICS_PRESETS: Record<GraphicsQuality, GraphicsPreset> = {
     debrisDensity: 0.3,
     starCount: 3000,
     particleBudget: 120,
+    terrainDepth: 6,
+    terrainSplit: 1.5,
   },
   medium: {
     label: 'Medium',
@@ -49,6 +57,8 @@ export const GRAPHICS_PRESETS: Record<GraphicsQuality, GraphicsPreset> = {
     debrisDensity: 0.6,
     starCount: 6000,
     particleBudget: 240,
+    terrainDepth: 6,
+    terrainSplit: 2,
   },
   high: {
     label: 'High',
@@ -62,6 +72,8 @@ export const GRAPHICS_PRESETS: Record<GraphicsQuality, GraphicsPreset> = {
     debrisDensity: 1,
     starCount: 10000,
     particleBudget: 400,
+    terrainDepth: 7,
+    terrainSplit: 2.2,
   },
 }
 

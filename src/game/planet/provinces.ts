@@ -1,7 +1,7 @@
 import { PROVINCE_TYPES } from '@/data/provinces'
 import type { ProvinceKind, ProvinceTypeDef } from '@/types/content'
 import { smoothstep } from '@/utils/math'
-import { createNoise3D, fbm3, type Noise3D } from '@/utils/noise'
+import { createSmoothNoise3D, fbm3, type Noise3D } from '@/utils/noise'
 import { createRng, deriveSeed, randRange, type Rng } from '@/utils/random'
 import { dot, normalize, setVec, vec3, type Vec3 } from '@/utils/vec3'
 import { chartDirection } from './frame'
@@ -199,7 +199,7 @@ export function createProvinceField(seed: number, count: number, radius: number,
     }
   })
 
-  const warpNoise: Noise3D = createNoise3D(createRng(deriveSeed(seed, 'province-borders')))
+  const warpNoise: Noise3D = createSmoothNoise3D(createRng(deriveSeed(seed, 'province-borders')))
   const warped = vec3()
   const best = new Int32Array(NEIGHBOURS)
   const bestDot = new Float64Array(NEIGHBOURS)
