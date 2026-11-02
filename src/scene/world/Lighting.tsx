@@ -3,14 +3,14 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { Object3D, Vector3, type DirectionalLight } from 'three'
 import { FRAME_PRIORITY } from '@/config/game'
 import { RENDER_LAYERS } from '@/config/graphics'
-import type { Terrain } from '@/game/world'
 import { cameraRuntime, playerRuntime } from '@/stores/runtime'
 import type { RegionDef } from '@/types/content'
 import { directionFromAngles } from '@/utils/math'
 
 interface LightingProps {
   region: RegionDef
-  terrain: Terrain
+  /** Where the main menu looks: the landing point. */
+  focus: { x: number; y: number; z: number }
   shadowMapSize: number
   /** Half-width of the shadowed area behind the main menu, meters. */
   shadowExtent: number
@@ -35,7 +35,7 @@ const DEPTH_BIAS = 0.04
  * Low sun for long shadows and dark crater interiors, a dim sky/ground fill so shadows keep some
  * detail, and faint blue earthshine from Earth's direction. The shadowed area follows the player.
  */
-export function Lighting({ region, terrain, shadowMapSize, shadowExtent, followShadowExtent }: LightingProps) {
+export function Lighting({ region, focus, shadowMapSize, shadowExtent, followShadowExtent }: LightingProps) {
   const sunRef = useRef<DirectionalLight>(null)
   const earthRef = useRef<DirectionalLight>(null)
   const { sun, earth } = region.sky
@@ -53,12 +53,8 @@ export function Lighting({ region, terrain, shadowMapSize, shadowExtent, followS
   const menuFocus = useMemo(() => {
     const heading = earthDir ?? sunDir.clone().negate()
     const length = Math.hypot(heading.x, heading.z) || 1
-    return new Vector3(
-      terrain.spawn.x + (heading.x / length) * 60,
-      terrain.spawn.y,
-      terrain.spawn.z + (heading.z / length) * 60,
-    )
-  }, [terrain, earthDir, sunDir])
+    return new Vector3(focus.x + (heading.x / length) * 60, focus.y, focus.z + (heading.z / length) * 60)
+  }, [focus, earthDir, sunDir])
   const target = useMemo(() => new Object3D(), [])
   const tracking = useRef({ focus: new Vector3(), snapped: new Vector3(Number.NaN, 0, 0), extent: 0 })
 

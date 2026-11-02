@@ -22,6 +22,8 @@ type ViewMode = 'menu' | CameraMode
 interface CameraRigProps {
   region: RegionDef
   terrain: Terrain
+  /** The landing point the main menu frames. */
+  focus: { x: number; y: number; z: number }
   /** Objects that move with the camera, such as the first-person tool. */
   children?: ReactNode
 }
@@ -34,13 +36,13 @@ const reducedMotion = typeof window.matchMedia === 'function' ? window.matchMedi
  * smooth blends between them (a long arcing flight between menu and game, a quick blend between
  * the two follow modes). Must sit inside <Physics> for its collision probe.
  */
-export function CameraRig({ region, terrain, children }: CameraRigProps) {
+export function CameraRig({ region, terrain, focus, children }: CameraRigProps) {
   const cameraRef = useRef<PerspectiveCameraImpl>(null)
   const { world, rapier } = useRapier()
   const inMenu = useGameStore((s) => s.phase === 'menu')
   const cameraMode = usePlayerStore((s) => s.cameraMode)
   const mode: ViewMode = inMenu ? 'menu' : cameraMode
-  const menuShot = useMemo(() => createMenuShot(region, terrain), [region, terrain])
+  const menuShot = useMemo(() => createMenuShot(region, focus), [region, focus])
 
   const cast = useMemo<ProbeCast>(() => {
     const probe = new rapier.Ball(CAMERA.thirdPerson.collisionRadius)
@@ -71,6 +73,20 @@ export function CameraRig({ region, terrain, children }: CameraRigProps) {
     const r = rig.current
     const time = state.clock.elapsedTime
     const dt = Math.min(delta, 0.1)
+
+    // A view set by the debug tools overrides everything.
+    const override = cameraRuntime.override
+    if (override) {
+      camera.position.set(override.position.x, override.position.y, override.position.z)
+      camera.up.set(override.up.x, override.up.y, override.up.z)
+      camera.lookAt(override.target.x, override.target.y, override.target.z)
+      cameraRuntime.position.x = camera.position.x
+      cameraRuntime.position.y = camera.position.y
+      cameraRuntime.position.z = camera.position.z
+      inputState.lookX = 0
+      inputState.lookY = 0
+      return
+    }
 
     // A mode change starts a blend from wherever the camera is right now.
     if (r.mode !== mode) {

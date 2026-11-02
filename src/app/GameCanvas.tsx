@@ -3,8 +3,11 @@ import { Physics } from '@react-three/rapier'
 import { Suspense, useRef } from 'react'
 import { FRAME_PRIORITY, PHYSICS } from '@/config/game'
 import { GRAPHICS_PRESETS } from '@/config/graphics'
+import { getPlanet } from '@/game/planet'
 import { CameraRig } from '@/scene/camera/CameraRig'
 import { Mining } from '@/scene/mining/Mining'
+import { planetTerrainStatus } from '@/scene/planet/terrainStatus'
+import { PlanetWorld } from '@/scene/planet/PlanetWorld'
 import { FirstPersonTool } from '@/scene/player/FirstPersonTool'
 import { Player } from '@/scene/player/Player'
 import { Sky } from '@/scene/sky/Sky'
@@ -12,6 +15,12 @@ import { LunarWorld } from '@/scene/world/LunarWorld'
 import { useActiveRegion } from '@/scene/world/useActiveRegion'
 import { useGameStore } from '@/stores/gameStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+
+/**
+ * Preview of the spherical Moon while it is being built (Milestone 4): `?planet` in the URL shows
+ * the planet instead of the flat landing site, without the astronaut or mining yet.
+ */
+const PLANET_PREVIEW = new URLSearchParams(window.location.search).has('planet')
 
 /** The 3D scene root: renderer, physics, and top-level scene composition. Stays mounted across menu and game. */
 export function GameCanvas() {
@@ -26,12 +35,18 @@ export function GameCanvas() {
       <Suspense fallback={null}>
         {/* Runs behind the menu too (static bodies only, nearly free), so queries are ready when a game starts. */}
         <Physics gravity={PHYSICS.gravity} paused={phase === 'paused'} updatePriority={FRAME_PRIORITY.physics}>
-          <CameraRig region={region} terrain={terrain}>
+          <CameraRig region={region} terrain={terrain} focus={PLANET_PREVIEW ? getPlanet().spawn.position : terrain.spawn}>
             <FirstPersonTool />
           </CameraRig>
-          <LunarWorld preset={preset} />
-          <Mining region={region} particleBudget={preset.particleBudget} />
-          {phase !== 'menu' && <Player region={region} terrain={terrain} />}
+          {PLANET_PREVIEW ? (
+            <PlanetWorld preset={preset} />
+          ) : (
+            <>
+              <LunarWorld preset={preset} />
+              <Mining region={region} particleBudget={preset.particleBudget} />
+              {phase !== 'menu' && <Player region={region} terrain={terrain} />}
+            </>
+          )}
         </Physics>
         <SceneReadySignal />
       </Suspense>
@@ -43,6 +58,8 @@ export function GameCanvas() {
 function SceneReadySignal() {
   const frames = useRef(0)
   useFrame(() => {
+    // On the Moon, wait until the terrain in view has its detail.
+    if (PLANET_PREVIEW && !planetTerrainStatus.ready) return
     frames.current += 1
     if (frames.current === 3) useGameStore.getState().markSceneReady()
   })

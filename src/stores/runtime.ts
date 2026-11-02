@@ -47,6 +47,8 @@ export const cameraRuntime = {
   position: { x: 0, y: 0, z: 0 } as Vec3,
   /** The camera is inside or right next to the helmet, so the body is hidden from it. */
   bodyHidden: false,
+  /** A fixed view set by the debug tools, overriding the camera rig; null in normal play. */
+  override: null as { position: Vec3; target: Vec3; up: Vec3 } | null,
 }
 
 /** Something the effects should show once: a deposit breaking, or its ore being picked up. */

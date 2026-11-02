@@ -10,20 +10,7 @@ import { createChunkBuilder, type ChunkBuilder } from './chunkBuilder'
 import type { ChunkMesh, ChunkPalette, RGB } from './chunkMesh'
 import { createLodSelection, selectLod, type ChunkBounds, type LodSelection } from './lod'
 import { withPlanetShadow } from './planetShadow'
-
-/** Live terrain numbers, for the loading cover and debugging. */
-export const planetTerrainStatus = {
-  /** The first view has its detail: safe to lift the loading cover. */
-  ready: false,
-  displayed: 0,
-  cached: 0,
-  queued: 0,
-  inFlight: 0,
-  built: 0,
-  /** Average build time of recent chunks, ms (in the workers). */
-  buildMs: 0,
-  triangles: 0,
-}
+import { planetTerrainStatus } from './terrainStatus'
 
 interface ChunkRecord {
   mesh: Mesh
@@ -54,6 +41,26 @@ interface PlanetTerrainProps {
 const linear = (hex: string): RGB => {
   const c = new Color(hex)
   return [c.r, c.g, c.b]
+}
+
+/** A drawable mesh for a finished chunk, hidden until the level of detail picks it. */
+function chunkRecord(chunk: ChunkMesh, material: MeshStandardMaterial, frame: number): ChunkRecord {
+  const geometry = new BufferGeometry()
+  geometry.setAttribute('position', new BufferAttribute(chunk.positions, 3))
+  geometry.setAttribute('normal', new BufferAttribute(chunk.normals!, 3))
+  geometry.setAttribute('color', new BufferAttribute(chunk.colors!, 3))
+  geometry.setIndex(new BufferAttribute(chunk.indices, 1))
+  geometry.boundingSphere = new Sphere(new Vector3(), chunk.radius)
+  const mesh = new Mesh(geometry, material)
+  mesh.position.set(...chunk.center)
+  mesh.matrixAutoUpdate = false
+  mesh.updateMatrix()
+  mesh.castShadow = true
+  mesh.receiveShadow = true
+  mesh.visible = false
+  planetTerrainStatus.built++
+  planetTerrainStatus.buildMs += (chunk.buildMs - planetTerrainStatus.buildMs) * 0.1
+  return { mesh, bounds: { center: vec3(...chunk.center), radius: chunk.radius }, triangles: chunk.indices.length / 3, lastUsed: frame }
 }
 
 /**
@@ -89,28 +96,9 @@ export function PlanetTerrain({ planet, palette, depth, split }: PlanetTerrainPr
     const records = new Map<number, ChunkRecord>()
     const add = (chunk: ChunkMesh) => {
       if (records.has(chunk.key)) return
-      const geometry = new BufferGeometry()
-      geometry.setAttribute('position', new BufferAttribute(chunk.positions, 3))
-      geometry.setAttribute('normal', new BufferAttribute(chunk.normals!, 3))
-      geometry.setAttribute('color', new BufferAttribute(chunk.colors!, 3))
-      geometry.setIndex(new BufferAttribute(chunk.indices, 1))
-      geometry.boundingSphere = new Sphere(new Vector3(), chunk.radius)
-      const mesh = new Mesh(geometry, material)
-      mesh.position.set(...chunk.center)
-      mesh.matrixAutoUpdate = false
-      mesh.updateMatrix()
-      mesh.castShadow = true
-      mesh.receiveShadow = true
-      mesh.visible = false
-      root.add(mesh)
-      records.set(chunk.key, {
-        mesh,
-        bounds: { center: vec3(...chunk.center), radius: chunk.radius },
-        triangles: chunk.indices.length / 3,
-        lastUsed: 0,
-      })
-      planetTerrainStatus.built++
-      planetTerrainStatus.buildMs += (chunk.buildMs - planetTerrainStatus.buildMs) * 0.1
+      const record = chunkRecord(chunk, material, 0)
+      root.add(record.mesh)
+      records.set(chunk.key, record)
     }
     // The six face roots straight away, so the whole Moon is there from the first frame.
     for (let face = 0; face < 6; face++) add(builder.buildNow({ face, depth: 0, ix: 0, iy: 0 }))
@@ -138,23 +126,9 @@ export function PlanetTerrain({ planet, palette, depth, split }: PlanetTerrainPr
 
     for (const chunk of builder.take(PLANET_TERRAIN.uploadsPerFrame)) {
       if (records.has(chunk.key)) continue
-      const geometry = new BufferGeometry()
-      geometry.setAttribute('position', new BufferAttribute(chunk.positions, 3))
-      geometry.setAttribute('normal', new BufferAttribute(chunk.normals!, 3))
-      geometry.setAttribute('color', new BufferAttribute(chunk.colors!, 3))
-      geometry.setIndex(new BufferAttribute(chunk.indices, 1))
-      geometry.boundingSphere = new Sphere(new Vector3(), chunk.radius)
-      const mesh = new Mesh(geometry, material)
-      mesh.position.set(...chunk.center)
-      mesh.matrixAutoUpdate = false
-      mesh.updateMatrix()
-      mesh.castShadow = true
-      mesh.receiveShadow = true
-      mesh.visible = false
-      root.add(mesh)
-      records.set(chunk.key, { mesh, bounds: { center: vec3(...chunk.center), radius: chunk.radius }, triangles: chunk.indices.length / 3, lastUsed: s.frame })
-      planetTerrainStatus.built++
-      planetTerrainStatus.buildMs += (chunk.buildMs - planetTerrainStatus.buildMs) * 0.1
+      const record = chunkRecord(chunk, material, s.frame)
+      root.add(record.mesh)
+      records.set(chunk.key, record)
     }
 
     s.camera.x = camera.position.x

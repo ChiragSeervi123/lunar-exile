@@ -12,7 +12,7 @@ export function LunarWorld({ preset }: { preset: GraphicsPreset }) {
     <>
       <Lighting
         region={region}
-        terrain={terrain}
+        focus={terrain.spawn}
         shadowMapSize={preset.shadowMapSize}
         shadowExtent={preset.shadowExtent}
         followShadowExtent={preset.followShadowExtent}

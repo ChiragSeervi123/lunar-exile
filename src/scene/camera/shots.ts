@@ -1,7 +1,6 @@
 import { Vector3 } from 'three'
 import { CAMERA } from '@/config/camera'
 import { defaultFacing } from '@/game/player'
-import type { Terrain } from '@/game/world'
 import type { RegionDef } from '@/types/content'
 import { clamp, DEG2RAD } from '@/utils/math'
 
@@ -21,8 +20,7 @@ export function createPose(): CameraPose {
  * The main menu's slow pan across the landing site, framed toward Earth (away from the sun where
  * Earth never rises) with Earth on the right third of the frame.
  */
-export function createMenuShot(region: RegionDef, terrain: Terrain): Shot {
-  const { spawn } = terrain
+export function createMenuShot(region: RegionDef, spawn: { x: number; y: number; z: number }): Shot {
   const heading = defaultFacing(region)
   const { menu } = CAMERA
   return (time, aspect, out) => {
