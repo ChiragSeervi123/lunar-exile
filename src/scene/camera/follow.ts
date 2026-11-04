@@ -1,13 +1,14 @@
 import { Vector3 } from 'three'
 import { CAMERA } from '@/config/camera'
+import { frameDirection, toWorld, type Frame, type Planet } from '@/game/planet'
 import type { Vec3 } from '@/game/player'
-import type { Terrain } from '@/game/world'
+import { vec3 } from '@/utils/vec3'
 import type { CameraPose } from './shots'
 
-/** Unit view direction for a yaw (radians clockwise from north) and pitch (radians, positive up). */
-export function viewDirection(yaw: number, pitch: number, out: Vector3): Vector3 {
-  const level = Math.cos(pitch)
-  return out.set(Math.sin(yaw) * level, Math.sin(pitch), -Math.cos(yaw) * level)
+/** Unit view direction for a yaw (radians clockwise from north) and pitch (radians, positive up) in `frame`. */
+export function viewDirection(frame: Frame, yaw: number, pitch: number, out: Vector3): Vector3 {
+  frameDirection(frame, yaw, pitch, out)
+  return out
 }
 
 /** How far a probe sphere can travel from `origin` along unit `direction`, up to `maxDistance`. */
@@ -27,31 +28,63 @@ export function createFollowState(): FollowState {
 
 const view = new Vector3()
 const boom = new Vector3()
+const goal = new Vector3()
+const side = vec3()
+const local = vec3()
+const dir = vec3()
+
+/** Keeps `p` at least `clearance` meters above the Moon's exact ground, moving it straight up if needed. */
+export function keepAboveGround(planet: Planet, p: Vector3, clearance: number): Vector3 {
+  const r = p.length()
+  dir.x = p.x / r
+  dir.y = p.y / r
+  dir.z = p.z / r
+  const floor = planet.surfaceRadius(dir) + clearance
+  if (r < floor) p.multiplyScalar(floor / r)
+  return p
+}
 
 /**
- * Third person: orbit a point above the shoulders, over the right shoulder. A sphere swept from
- * that point keeps the camera in front of terrain and rocks.
+ * Third person: orbit a point above the shoulders, over the right shoulder, in the astronaut's own
+ * frame (so "up" is away from the Moon's centre wherever it stands). A sphere swept from that
+ * point keeps the camera in front of terrain and rocks.
  */
 export function thirdPersonPose(
   state: FollowState,
   feet: Vec3,
+  frame: Frame,
   yaw: number,
   pitch: number,
   dt: number,
   cast: ProbeCast,
-  terrain: Terrain,
+  planet: Planet,
   out: CameraPose,
 ): CameraPose {
   const c = CAMERA.thirdPerson
-  // Tight horizontally so the view never feels delayed; softer vertically so jumps and landings don't jolt it.
-  const follow = state.ready ? 1 - Math.exp(-c.followSharpness * dt) : 1
-  const rise = state.ready ? 1 - Math.exp(-c.verticalSharpness * dt) : 1
-  state.pivot.x += (feet.x - state.pivot.x) * follow
-  state.pivot.z += (feet.z - state.pivot.z) * follow
-  state.pivot.y += (feet.y + c.pivotHeight - state.pivot.y) * rise
+  const up = frame.up
+  goal.set(feet.x + up.x * c.pivotHeight, feet.y + up.y * c.pivotHeight, feet.z + up.z * c.pivotHeight)
+  if (!state.ready) state.pivot.copy(goal)
+  else {
+    // Tight along the ground so the view never feels delayed; softer vertically so jumps and
+    // landings don't jolt it.
+    const follow = 1 - Math.exp(-c.followSharpness * dt)
+    const rise = 1 - Math.exp(-c.verticalSharpness * dt)
+    const ex = goal.x - state.pivot.x
+    const ey = goal.y - state.pivot.y
+    const ez = goal.z - state.pivot.z
+    const vertical = ex * up.x + ey * up.y + ez * up.z
+    state.pivot.x += (ex - up.x * vertical) * follow + up.x * vertical * rise
+    state.pivot.y += (ey - up.y * vertical) * follow + up.y * vertical * rise
+    state.pivot.z += (ez - up.z * vertical) * follow + up.z * vertical * rise
+  }
 
-  viewDirection(yaw, pitch, view)
-  boom.set(Math.cos(yaw) * c.shoulderOffset, 0, Math.sin(yaw) * c.shoulderOffset).addScaledVector(view, -c.distance)
+  viewDirection(frame, yaw, pitch, view)
+  // Over the right shoulder: the view's right, along the ground (x east, z south in the frame).
+  local.x = Math.cos(yaw)
+  local.y = 0
+  local.z = Math.sin(yaw)
+  toWorld(frame, local, side)
+  boom.set(side.x * c.shoulderOffset, side.y * c.shoulderOffset, side.z * c.shoulderOffset).addScaledVector(view, -c.distance)
   const reach = boom.length()
   boom.divideScalar(reach)
   const clear = Math.max(0.2, cast(state.pivot, boom, reach) - c.collisionMargin)
@@ -61,17 +94,17 @@ export function thirdPersonPose(
   state.ready = true
 
   out.position.copy(state.pivot).addScaledVector(boom, state.distance)
-  // Beyond the playable area there is no collider, so also keep above the exact terrain.
-  const floor = terrain.heightAt(out.position.x, out.position.z) + c.groundClearance
-  if (out.position.y < floor) out.position.y = floor
+  // Colliders exist only around the astronaut, so also keep above the exact ground.
+  keepAboveGround(planet, out.position, c.groundClearance)
   out.target.copy(out.position).addScaledVector(view, 10)
   return out
 }
 
 /** First person: at eye level inside the helmet, looking where the mouse points. */
-export function firstPersonPose(feet: Vec3, yaw: number, pitch: number, out: CameraPose): CameraPose {
-  viewDirection(yaw, pitch, view)
-  out.position.set(feet.x, feet.y + CAMERA.firstPerson.eyeHeight, feet.z)
+export function firstPersonPose(feet: Vec3, frame: Frame, yaw: number, pitch: number, out: CameraPose): CameraPose {
+  viewDirection(frame, yaw, pitch, view)
+  const eye = CAMERA.firstPerson.eyeHeight
+  out.position.set(feet.x + frame.up.x * eye, feet.y + frame.up.y * eye, feet.z + frame.up.z * eye)
   out.target.copy(out.position).addScaledVector(view, 10)
   return out
 }

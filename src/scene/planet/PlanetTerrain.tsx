@@ -1,6 +1,6 @@
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import { BufferAttribute, BufferGeometry, Color, Group, Mesh, MeshStandardMaterial, Sphere, Vector3 } from 'three'
+import { BufferAttribute, BufferGeometry, Color, Group, Mesh, MeshStandardMaterial, Sphere, Vector3, type MeshDepthMaterial } from 'three'
 import { FRAME_PRIORITY } from '@/config/game'
 import { PLANET_TERRAIN } from '@/config/planet'
 import type { Planet } from '@/game/planet'
@@ -10,7 +10,7 @@ import { createChunkBuilder, type ChunkBuilder } from './chunkBuilder'
 import type { ChunkMesh, ChunkPalette, RGB } from './chunkMesh'
 import { createLodSelection, selectLod, type ChunkBounds, type LodSelection } from './lod'
 import { withPlanetShadow } from './planetShadow'
-import { withSkirtShading } from './skirtShading'
+import { createSkirtlessDepthMaterial, withSkirtShading } from './skirtShading'
 import { planetTerrainStatus } from './terrainStatus'
 
 interface ChunkRecord {
@@ -19,6 +19,12 @@ interface ChunkRecord {
   triangles: number
   /** Frame it was last part of the view (or its ancestry). */
   lastUsed: number
+}
+
+/** The terrain's drawing material, and its shadow-pass material (without the skirts). */
+interface TerrainMaterials {
+  surface: MeshStandardMaterial
+  depth: MeshDepthMaterial
 }
 
 interface TerrainState {
@@ -45,7 +51,7 @@ const linear = (hex: string): RGB => {
 }
 
 /** A drawable mesh for a finished chunk, hidden until the level of detail picks it. */
-function chunkRecord(chunk: ChunkMesh, material: MeshStandardMaterial, planetRadius: number, frame: number): ChunkRecord {
+function chunkRecord(chunk: ChunkMesh, materials: TerrainMaterials, planetRadius: number, frame: number): ChunkRecord {
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new BufferAttribute(chunk.positions, 3))
   geometry.setAttribute('normal', new BufferAttribute(chunk.normals!, 3))
@@ -53,7 +59,8 @@ function chunkRecord(chunk: ChunkMesh, material: MeshStandardMaterial, planetRad
   geometry.setAttribute('skirt', new BufferAttribute(chunk.skirt!, 1))
   geometry.setIndex(new BufferAttribute(chunk.indices, 1))
   geometry.boundingSphere = new Sphere(new Vector3(), chunk.radius)
-  const mesh = new Mesh(geometry, material)
+  const mesh = new Mesh(geometry, materials.surface)
+  mesh.customDepthMaterial = materials.depth
   mesh.position.set(...chunk.center)
   mesh.matrixAutoUpdate = false
   mesh.updateMatrix()
@@ -76,11 +83,20 @@ function chunkRecord(chunk: ChunkMesh, material: MeshStandardMaterial, planetRad
 export function PlanetTerrain({ planet, palette, depth, split }: PlanetTerrainProps) {
   const group = useRef<Group>(null)
   const state = useRef<TerrainState | null>(null)
-  const material = useMemo(
-    () => withSkirtShading(withPlanetShadow(new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.96, metalness: 0 }))),
+  const material = useMemo<TerrainMaterials>(
+    () => ({
+      surface: withSkirtShading(withPlanetShadow(new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.96, metalness: 0 }))),
+      depth: createSkirtlessDepthMaterial(),
+    }),
     [],
   )
-  useEffect(() => () => material.dispose(), [material])
+  useEffect(
+    () => () => {
+      material.surface.dispose()
+      material.depth.dispose()
+    },
+    [material],
+  )
 
   useEffect(() => {
     const root = group.current

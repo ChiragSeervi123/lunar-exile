@@ -94,8 +94,10 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
   // Vertex spacing: features smaller than this can't show, so they aren't sampled.
   const spacing = nodeSize(R, depth) / res
 
-  for (let j = -1; j <= res + 1; j++) {
-    for (let i = -1; i <= res + 1; i++) {
+  // The border is only needed for normals, so physics meshes skip it.
+  const border = render ? 1 : 0
+  for (let j = -border; j <= res + border; j++) {
+    for (let i = -border; i <= res + border; i++) {
       const gi = ix * res + i
       const gj = iy * res + j
       let s = gridParam(gi, cells)

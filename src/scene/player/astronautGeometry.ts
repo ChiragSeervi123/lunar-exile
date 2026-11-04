@@ -1,5 +1,6 @@
 import { MeshStandardMaterial, SphereGeometry, type BufferGeometry } from 'three'
 import { box, cylinder, part, rock, segment } from '../lowPoly'
+import { withPlanetShadow } from '../planet/planetShadow'
 import { createSkyReflection } from '../reflection'
 
 /**
@@ -111,15 +112,18 @@ export interface AstronautParts {
 export function createAstronautParts(sun: Direction, earth: Direction | null): AstronautParts {
   const geometry = createAstronautGeometry()
   const environment = createSkyReflection(sun, earth)
-  const suit = new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.72, metalness: 0.05 })
+  // Both lit by the sun, so both are shaded by the Moon itself on its night side.
+  const suit = withPlanetShadow(new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.72, metalness: 0.05 }))
   // Gold-coated sun visor, like a real EVA helmet.
-  const visor = new MeshStandardMaterial({
-    color: '#d9b062',
-    metalness: 1,
-    roughness: 0.16,
-    envMap: environment,
-    envMapIntensity: 1.3,
-  })
+  const visor = withPlanetShadow(
+    new MeshStandardMaterial({
+      color: '#d9b062',
+      metalness: 1,
+      roughness: 0.16,
+      envMap: environment,
+      envMapIntensity: 1.3,
+    }),
+  )
   return {
     geometry,
     suit,

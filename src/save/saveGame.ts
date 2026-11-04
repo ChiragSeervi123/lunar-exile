@@ -3,7 +3,8 @@ import { REGIONS } from '@/data/regions'
 import { STARTING_REGION } from '@/data/player'
 import { sanitizeEquipment, sanitizeStacks } from '@/game/inventory'
 import { sanitizeSites, type DepositSites } from '@/game/mining'
-import type { PlayerSpawn } from '@/game/player'
+import { chartDirection, chartRotation, frameDirection, getPlanet } from '@/game/planet'
+import type { PlayerPose } from '@/game/player'
 import { useEconomyStore } from '@/stores/economyStore'
 import { useGameStore } from '@/stores/gameStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
@@ -12,6 +13,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { playerRuntime, worldRuntime } from '@/stores/runtime'
 import { useWorldStore } from '@/stores/worldStore'
 import { clamp } from '@/utils/math'
+import { quat, rotateVec, vec3 } from '@/utils/vec3'
 
 /**
  * Serializable snapshot of persistent game state. Bump SAVE.version on changes. Runtime state
@@ -20,8 +22,11 @@ import { clamp } from '@/utils/math'
 export interface SaveData {
   version: number
   regionId: string
-  /** Where the astronaut stood; null means the landing zone. Velocity and physics objects are never saved. */
-  player: PlayerSpawn | null
+  /**
+   * Where the astronaut stood and faced on the Moon (world space); null means the landing zone.
+   * Velocity and physics objects are never saved.
+   */
+  player: PlayerPose | null
   survival: ReturnType<typeof usePlayerStore.getState>['survival']
   inventory: Pick<ReturnType<typeof useInventoryStore.getState>, 'stacks' | 'equipment'>
   economy: Pick<
@@ -33,10 +38,13 @@ export interface SaveData {
   world: { playTime: number } & DepositSites
 }
 
-function currentPlayer(): PlayerSpawn | null {
+const forward = vec3()
+
+function currentPlayer(): PlayerPose | null {
   if (!playerRuntime.active) return usePlayerStore.getState().spawnPoint
   const { x, y, z } = playerRuntime.position
-  return { position: [x, y, z], facing: playerRuntime.facing }
+  frameDirection(playerRuntime.frame, playerRuntime.facing, 0, forward)
+  return { position: [x, y, z], forward: [forward.x, forward.y, forward.z] }
 }
 
 export function createSave(): SaveData {
@@ -81,14 +89,33 @@ export function saveProgress(): void {
   useGameStore.getState().setHasSave(saveToStorage() || hasSavedGame())
 }
 
-function isPlayerSpawn(value: unknown): value is PlayerSpawn {
-  const spawn = value as PlayerSpawn | null
-  return (
-    Array.isArray(spawn?.position) &&
-    spawn.position.length === 3 &&
-    spawn.position.every(Number.isFinite) &&
-    Number.isFinite(spawn.facing)
-  )
+const isVector = (value: unknown): value is [number, number, number] =>
+  Array.isArray(value) && value.length === 3 && value.every(Number.isFinite)
+
+/** A pose on the Moon's surface: anything far underground or out in space is damaged data. */
+function isPlayerPose(value: unknown): value is PlayerPose {
+  const pose = value as PlayerPose | null
+  if (!isVector(pose?.position) || !isVector(pose.forward)) return false
+  const planet = getPlanet()
+  const r = Math.hypot(...pose.position)
+  return r > planet.radius + planet.minHeight - 50 && r < planet.radius + planet.maxHeight + 200 && Math.hypot(...pose.forward) > 1e-6
+}
+
+/**
+ * A player position from versions 2–3, on the flat landing-site map (feet position, and yaw
+ * clockwise from north), moved onto the Moon through that map: the same spot, the same height
+ * above the ground and the same heading. Null if it isn't one.
+ */
+function migrateFlatPlayer(value: unknown): PlayerPose | null {
+  const spawn = value as { position?: unknown; facing?: unknown } | null
+  if (!isVector(spawn?.position) || typeof spawn.facing !== 'number' || !Number.isFinite(spawn.facing)) return null
+  const [x, y, z] = spawn.position
+  const planet = getPlanet()
+  const R = planet.radius
+  const dir = chartDirection(x, z, R, vec3())
+  const r = R + planet.heightAt(dir) + (y - planet.landing.terrain.heightAt(x, z))
+  const f = rotateVec(vec3(), chartRotation(x, z, R, quat()), vec3(Math.sin(spawn.facing), 0, -Math.cos(spawn.facing)))
+  return { position: [dir.x * r, dir.y * r, dir.z * r], forward: [f.x, f.y, f.z] }
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -143,6 +170,8 @@ export function migrate(raw: unknown): SaveData | null {
   if (data.version === 1) data = { ...data, version: 2, player: null }
   // Version 2 predates mining: nothing mined yet, and the starting tool is added by the checks below.
   if (data.version === 2) data = { ...data, version: 3, world: { playTime: 0, depleted: {}, drops: {} } }
+  // Version 3 played on the flat landing-site map: carry the astronaut onto the Moon through it.
+  if (data.version === 3) data = { ...data, version: 4, player: migrateFlatPlayer(data.player) }
   if (data.version !== SAVE.version) return null
 
   const world = isRecord(data.world) ? data.world : {}
@@ -152,7 +181,7 @@ export function migrate(raw: unknown): SaveData | null {
   return {
     version: SAVE.version,
     regionId: typeof data.regionId === 'string' && data.regionId in REGIONS ? data.regionId : STARTING_REGION,
-    player: isPlayerSpawn(data.player) ? data.player : null,
+    player: isPlayerPose(data.player) ? data.player : null,
     survival: sanitizeSurvival(data.survival),
     inventory: { stacks: sanitizeStacks(inventory.stacks), equipment: sanitizeEquipment(inventory.equipment) },
     economy: sanitizeEconomy(data.economy),

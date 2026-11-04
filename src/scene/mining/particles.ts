@@ -115,7 +115,14 @@ export class ParticlePool {
       this.age[i] = age
       const t = age / this.life[i]
       const v = i * 3
-      this.velocity[v + 1] -= GRAVITY * dt
+      // Toward the Moon's centre, wherever the particle is.
+      const px = this.position[v]
+      const py = this.position[v + 1]
+      const pz = this.position[v + 2]
+      const g = (GRAVITY * dt) / (Math.hypot(px, py, pz) || 1)
+      this.velocity[v] -= px * g
+      this.velocity[v + 1] -= py * g
+      this.velocity[v + 2] -= pz * g
       this.position[v] += this.velocity[v] * dt
       this.position[v + 1] += this.velocity[v + 1] * dt
       this.position[v + 2] += this.velocity[v + 2] * dt

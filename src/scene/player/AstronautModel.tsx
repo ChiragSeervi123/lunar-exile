@@ -6,10 +6,11 @@ import { RENDER_LAYERS } from '@/config/graphics'
 import { PLAYER_CONTROLLER } from '@/config/player'
 import { PLAYER_BASE } from '@/data/player'
 import { LANDING_TIME, resolveAnimationState, wrapAngle } from '@/game/player'
-import type { Terrain } from '@/game/world'
+import { toLocal, type Planet } from '@/game/planet'
 import { cameraRuntime, miningRuntime, playerAnimation, playerMotion, playerRuntime } from '@/stores/runtime'
 import type { RegionDef } from '@/types/content'
 import { clamp, directionFromAngles } from '@/utils/math'
+import { normalize, vec3 } from '@/utils/vec3'
 import { createAstronautParts, RIG } from './astronautGeometry'
 import { createPose, POSE_KEYS, STRIDE, targetPose } from './astronautPose'
 import { createLensGeometry, createMiningToolGeometry, LENS_FIRING, LENS_IDLE, TOOL_TIP } from './toolGeometry'
@@ -23,7 +24,7 @@ const TURN_SHARPNESS = 20
 
 interface AstronautModelProps {
   region: RegionDef
-  terrain: Terrain
+  planet: Planet
 }
 
 /**
@@ -31,7 +32,7 @@ interface AstronautModelProps {
  * mining state. Swap this component for a skinned GLTF model later: it only reads playerRuntime,
  * playerMotion, cameraRuntime and miningRuntime, and writes the tool's emitter position back.
  */
-export function AstronautModel({ region, terrain }: AstronautModelProps) {
+export function AstronautModel({ region, planet }: AstronautModelProps) {
   const { sun, earth } = region.sky
   const parts = useMemo(
     () =>
@@ -80,6 +81,9 @@ export function AstronautModel({ region, terrain }: AstronautModelProps) {
     yaw: playerRuntime.facing,
     hidden: false,
     tip: new Vector3(),
+    up: vec3(),
+    normal: vec3(),
+    local: vec3(),
   })
 
   useFrame((state, delta) => {
@@ -115,7 +119,9 @@ export function AstronautModel({ region, terrain }: AstronautModelProps) {
     targetPose(current, a.gait, state.clock.elapsedTime, landing, a.target)
     // Lean into the slope: forward walking uphill, back walking downhill.
     if (playerMotion.grounded && speed > 0.5) {
-      const [nx, ny, nz] = terrain.normalAt(playerRuntime.renderPosition.x, playerRuntime.renderPosition.z)
+      // The ground's slope in the body's frame (x east, y up, z south), as on the flat map.
+      planet.normalAt(normalize(a.up, playerRuntime.renderPosition), a.normal)
+      const { x: nx, y: ny, z: nz } = toLocal(playerRuntime.renderFrame, a.normal, a.local)
       const rise = -(nx * Math.sin(a.yaw) - nz * Math.cos(a.yaw)) / Math.max(ny, 0.2)
       a.target.lean += clamp(rise * 0.35, -0.12, 0.18)
     }
@@ -124,7 +130,12 @@ export function AstronautModel({ region, terrain }: AstronautModelProps) {
     if (firing) {
       const p = playerRuntime.renderPosition
       const t = miningRuntime.point
-      const elevation = Math.atan2(t.y - p.y - SHOULDER_HEIGHT, Math.hypot(t.x - p.x, t.z - p.z))
+      // Where the target is, in the body's frame.
+      a.normal.x = t.x - p.x
+      a.normal.y = t.y - p.y
+      a.normal.z = t.z - p.z
+      const d = toLocal(playerRuntime.renderFrame, a.normal, a.local)
+      const elevation = Math.atan2(d.y - SHOULDER_HEIGHT, Math.hypot(d.x, d.z))
       a.target.shoulderR = clamp(Math.PI / 2 + elevation, 0.2, 2.8) + 0.025 * Math.sin(state.clock.elapsedTime * 45)
       a.target.elbowR = 0.08
       a.target.shoulderL = Math.max(a.target.shoulderL, 0.35)

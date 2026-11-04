@@ -15,4 +15,9 @@ export const planetTerrainStatus = {
   sent: 0,
   received: 0,
   duplicates: 0,
+  /** Rocks drawn, and solid rocks with colliders around the player. */
+  rocks: 0,
+  rockColliders: 0,
+  /** Ground collision tiles alive around the player. */
+  collisionTiles: 0,
 }

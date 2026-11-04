@@ -1,6 +1,5 @@
 import {
   Color,
-  Euler,
   Group,
   InstancedBufferAttribute,
   InstancedMesh,
@@ -18,6 +17,8 @@ import { miningRuntime } from '@/stores/runtime'
 import type { ResourceDef } from '@/types/content'
 import { clamp } from '@/utils/math'
 import { createDepositGeometry, createHaloGeometry, createOreGeometry } from './depositGeometry'
+import { depositRotation, depositUp } from './depositPose'
+import { withPlanetShadow } from '../planet/planetShadow'
 import { createDepositMaterial, createHaloMaterial, createOreMaterial } from './depositMaterials'
 
 /** Seconds for a broken deposit to crumble away, and for a regrown one to rise again. */
@@ -32,6 +33,10 @@ const ORE_GLOW = 0.6
 interface Visual {
   deposit: Deposit
   rotation: Quaternion
+  /** The local vertical at the deposit. */
+  up: Vector3
+  /** Turns +Y onto that vertical (for the ore heap, which stands upright). */
+  upright: Quaternion
   mesh: InstancedMesh
   slot: number
   /** Halo instance, or -1. */
@@ -73,8 +78,8 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
   const scale = new Vector3()
   const color = new Color()
   const spin = new Quaternion()
-  const euler = new Euler()
-  const up = new Vector3(0, 1, 0)
+  const Y = new Vector3(0, 1, 0)
+  const offset = new Vector3()
 
   const haloDeposits = deposits.filter((d) => getResource(d.resourceId)?.appearance.halo)
   const haloMesh = new InstancedMesh(createHaloGeometry(), createHaloMaterial(), Math.max(1, haloDeposits.length))
@@ -84,7 +89,7 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
   geometries.push(haloMesh.geometry)
   materials.push(haloMesh.material as Material)
 
-  const oreMesh = new InstancedMesh(createOreGeometry(), createOreMaterial(), Math.max(1, deposits.length))
+  const oreMesh = new InstancedMesh(createOreGeometry(), withPlanetShadow(createOreMaterial()), Math.max(1, deposits.length))
   oreMesh.count = deposits.length
   oreMesh.frustumCulled = false
   oreMesh.castShadow = true
@@ -104,7 +109,7 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
     const fx = new Float32Array(members.length * 2)
     for (let i = 0; i < members.length; i++) fx[i * 2] = 1
     geometry.setAttribute('instanceFx', new InstancedBufferAttribute(fx, 2))
-    const mesh = new InstancedMesh(geometry, createDepositMaterial(def.appearance, reflection), members.length)
+    const mesh = new InstancedMesh(geometry, withPlanetShadow(createDepositMaterial(def.appearance, reflection)), members.length)
     mesh.name = resourceId
     mesh.castShadow = true
     mesh.receiveShadow = true
@@ -120,7 +125,9 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
       mesh.setColorAt(slot, color.setScalar(0.9 + 0.16 * shadeSeed))
       visuals.push({
         deposit,
-        rotation: new Quaternion().setFromEuler(euler.set(deposit.pitch, deposit.yaw, deposit.roll, 'XZY')),
+        rotation: depositRotation(deposit, new Quaternion()),
+        up: depositUp(deposit, new Vector3()),
+        upright: new Quaternion().setFromUnitVectors(Y, depositUp(deposit, new Vector3())),
         mesh,
         slot,
         halo: def.appearance.halo ? haloDeposits.indexOf(deposit) : -1,
@@ -186,13 +193,13 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
           const k = v.presence * v.presence * (3 - 2 * v.presence)
           position.set(d.x, d.y, d.z)
           // The beam shakes loose grit: a small tremor while mined.
-          if (heated) position.add(scale.set(Math.random() - 0.5, 0, Math.random() - 0.5).multiplyScalar(0.025 * d.size))
+          if (heated) position.add(offset.set(Math.random() - 0.5, 0, Math.random() - 0.5).applyQuaternion(v.upright).multiplyScalar(0.025 * d.size))
           v.mesh.setMatrixAt(v.slot, matrix.compose(position, v.rotation, scale.setScalar(d.size * k)))
           v.mesh.instanceMatrix.needsUpdate = true
           if (v.halo >= 0) {
             const r = bounds.radius * d.size * 1.35 * k
             const h = bounds.height * d.size * 0.75 * k
-            position.set(d.x, d.y, d.z).addScaledVector(up, bounds.height * d.size * 0.45)
+            position.set(d.x, d.y, d.z).addScaledVector(v.up, bounds.height * d.size * 0.45)
             haloMesh.setMatrixAt(v.halo, matrix.compose(position, v.rotation, scale.set(r, h, r)))
             haloChanged = true
           }
@@ -209,10 +216,11 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
           // Overshoot a little as it appears.
           const pop = v.ore < 1 ? Math.sin(v.ore * Math.PI * 0.5) * (1 + 0.25 * Math.sin(v.ore * Math.PI)) : 1
           const size = clamp(0.85 + d.yield * 0.08, 0.9, 1.4) * pop
-          position.set(d.x, d.y + 0.08 + 0.05 * Math.sin(time * 2 + v.phase), d.z)
-          spin.setFromAxisAngle(up, time * 0.7 + v.phase)
+          position.set(d.x, d.y, d.z).addScaledVector(v.up, 0.08 + 0.05 * Math.sin(time * 2 + v.phase))
+          // Upright on the ground, turning slowly about the local vertical.
+          spin.setFromAxisAngle(Y, time * 0.7 + v.phase).premultiply(v.upright)
           oreMesh.setMatrixAt(i, matrix.compose(position, spin, scale.setScalar(size)))
-          position.y += 0.1
+          position.addScaledVector(v.up, 0.1)
           oreGlow.setMatrixAt(i, matrix.compose(position, spin, scale.set(0.6 * size, 0.45 * size, 0.6 * size)))
           oreChanged = true
         }

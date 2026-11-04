@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { MeshBasicMaterial, MeshStandardMaterial, Vector3, type Group, type Mesh, type Object3D } from 'three'
 import { FRAME_PRIORITY } from '@/config/game'
 import { cameraRuntime, miningRuntime, playerMotion, playerRuntime } from '@/stores/runtime'
+import { withPlanetShadow } from '../planet/planetShadow'
 import {
   createLensGeometry,
   createMiningToolGeometry,
@@ -29,7 +30,7 @@ export function FirstPersonTool() {
       tool: createMiningToolGeometry(),
       lens: createLensGeometry(),
       arm: createViewArmGeometry(),
-      body: new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.65, metalness: 0.08 }),
+      body: withPlanetShadow(new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.65, metalness: 0.08 })),
       glow: new MeshBasicMaterial({ color: LENS_IDLE, toneMapped: false }),
     }),
     [],

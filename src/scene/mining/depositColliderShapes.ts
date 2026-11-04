@@ -1,6 +1,7 @@
-import { Euler, Quaternion, Vector3 } from 'three'
+import { Quaternion, Vector3 } from 'three'
 import { getResource } from '@/data/resources'
 import { depositBox, DROP_BOX, type Deposit, type DepositBox, type SiteFeature } from '@/game/mining'
+import { depositRotation } from './depositPose'
 
 export interface DepositColliderShape {
   deposit: Deposit
@@ -21,11 +22,10 @@ const ROUNDING = 0.3
 /** Rounded boxes for every deposit and for the ore it leaves, tilted and turned with the deposit. */
 export function depositColliderShapes(deposits: readonly Deposit[]): DepositColliderShape[] {
   const shapes: DepositColliderShape[] = []
-  const euler = new Euler()
   const rotation = new Quaternion()
   const offset = new Vector3()
   const add = (deposit: Deposit, feature: SiteFeature, box: DepositBox) => {
-    rotation.setFromEuler(euler.set(deposit.pitch, deposit.yaw, deposit.roll, 'XZY'))
+    depositRotation(deposit, rotation)
     offset.set(0, box.centerY, 0).applyQuaternion(rotation)
     const [hx, hy, hz] = box.halfExtents
     const border = Math.min(hx, hy, hz) * ROUNDING

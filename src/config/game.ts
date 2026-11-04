@@ -1,8 +1,9 @@
 export const PHYSICS = {
-  /** Lunar gravity, m/s^2. */
-  gravity: [0, -1.62, 0] as [number, number, number],
-  /** Grid spacing of the terrain collider, meters. Independent of graphics quality. */
-  terrainColliderSpacing: 3,
+  /**
+   * Lunar gravity, m/s², toward the Moon's centre. The physics world itself has none: "down"
+   * differs everywhere on a sphere, so each moving thing pulls itself toward the centre.
+   */
+  lunarGravity: 1.62,
 }
 
 /** Rapier collision group indices (0-15). */
@@ -50,12 +51,12 @@ export const FRAME_PRIORITY = {
   followers: -20,
 }
 
-export const BUILD_LABEL = 'Milestone 3'
+export const BUILD_LABEL = 'Milestone 4'
 
 export const SAVE = {
   storageKey: 'lunar-exile-save',
   /** Bump when SaveData changes shape (and add a migration in save/saveGame.ts). */
-  version: 3,
+  version: 4,
 }
 
 export const ECONOMY = {

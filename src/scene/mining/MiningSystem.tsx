@@ -74,7 +74,7 @@ function regrowDeposits(deposits: RegionDeposits): void {
     if (!deposit || !resource || !hasRegrown(sites, id, resource, worldRuntime.playTime)) continue
     const clearance = DEPOSIT_BOUNDS[resource.appearance.shape].radius * deposit.size + MINING.respawnClearance
     const p = playerRuntime.position
-    if (playerRuntime.active && Math.hypot(p.x - deposit.x, p.z - deposit.z) < clearance) continue
+    if (playerRuntime.active && Math.hypot(p.x - deposit.x, p.y - deposit.y, p.z - deposit.z) < clearance) continue
     miningRuntime.health.delete(id)
     ready.push(id)
   }
@@ -90,7 +90,7 @@ function regrowDeposits(deposits: RegionDeposits): void {
  */
 export function MiningSystem({ deposits }: { deposits: RegionDeposits }) {
   const { world, rapier } = useRapier()
-  const scratch = useRef({ ray: null as Ray | null, dir: new Vector3(), chipIn: 0, regrowIn: 0, beam: false })
+  const scratch = useRef({ ray: null as Ray | null, dir: new Vector3(), chest: new Vector3(), chipIn: 0, regrowIn: 0, beam: false })
 
   // Never leave the beam humming if the system goes away mid-cut.
   useEffect(() => () => setBeamSound(false), [])
@@ -117,10 +117,13 @@ export function MiningSystem({ deposits }: { deposits: RegionDeposits }) {
     const tool = getTool(useInventoryStore.getState().equipment.tool)
     if (phase === 'playing' && playerRuntime.active) {
       const feet = playerRuntime.renderPosition
+      const up = playerRuntime.renderFrame.up
       const cam = cameraRuntime.position
-      const dir = viewDirection(cameraRuntime.yaw, cameraRuntime.pitch, s.dir)
+      const dir = viewDirection(playerRuntime.renderFrame, cameraRuntime.yaw, cameraRuntime.pitch, s.dir)
+      // Reach is measured from the chest, along the astronaut's own vertical.
+      const chest = s.chest.set(feet.x + up.x * MINING.reachHeight, feet.y + up.y * MINING.reachHeight, feet.z + up.z * MINING.reachHeight)
       // Start the ray just behind the astronaut, so nothing between a third-person camera and the body is picked.
-      const along = (feet.x - cam.x) * dir.x + (feet.y + MINING.reachHeight - cam.y) * dir.y + (feet.z - cam.z) * dir.z
+      const along = (chest.x - cam.x) * dir.x + (chest.y - cam.y) * dir.y + (chest.z - cam.z) * dir.z
       const start = Math.max(0, along - MINING.aimStartBehind)
       const ray = (s.ray ??= new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: -1 }))
       ray.origin.x = cam.x + dir.x * start
@@ -143,7 +146,7 @@ export function MiningSystem({ deposits }: { deposits: RegionDeposits }) {
           m.point.x = ray.origin.x + dir.x * toi
           m.point.y = ray.origin.y + dir.y * toi
           m.point.z = ray.origin.z + dir.z * toi
-          m.distance = Math.hypot(m.point.x - feet.x, m.point.y - feet.y - MINING.reachHeight, m.point.z - feet.z)
+          m.distance = Math.hypot(m.point.x - chest.x, m.point.y - chest.y, m.point.z - chest.z)
           if (m.distance <= MINING.scanRange) {
             target = entry.deposit
             kind = entry.kind

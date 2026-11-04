@@ -11,39 +11,61 @@ export interface RockColliderShape {
 }
 
 /** Rocks the player can't walk through. Debris is decorative, and its amount follows graphics quality. */
-const SOLID_CLASSES: readonly RockClass[] = ['medium', 'boulder']
+export const SOLID_ROCK_CLASSES: readonly RockClass[] = ['medium', 'boulder']
 /** Colliders fill this fraction of a rock's bounding box, so contact sits on its rounded surface. */
 const FIT = 0.82
 /** Rounding radius as a fraction of the smallest half extent. */
 const ROUNDING = 0.4
 
-/** Rounded boxes fitted to each solid rock's shape, placement and orientation. */
-export function rockColliderShapes(field: RockField, shapes: Record<RockClass, BufferGeometry[]>): RockColliderShape[] {
-  const colliders: RockColliderShape[] = []
-  const half = new Vector3()
-  const center = new Vector3()
-  const scale = new Vector3()
-  const rotation = new Quaternion()
-  const euler = new Euler()
-
-  for (const cls of SOLID_CLASSES) {
-    const bounds = shapes[cls].map((geometry) => {
+/** Bounding boxes of every rock shape, per class and variant. */
+export function rockShapeBounds(shapes: Record<RockClass, BufferGeometry[]>): Record<RockClass, Box3[]> {
+  const bounds = {} as Record<RockClass, Box3[]>
+  for (const cls of Object.keys(shapes) as RockClass[]) {
+    bounds[cls] = shapes[cls].map((geometry) => {
       geometry.computeBoundingBox()
       return geometry.boundingBox?.clone() ?? new Box3()
     })
+  }
+  return bounds
+}
+
+const half = new Vector3()
+const center = new Vector3()
+const scale = new Vector3()
+
+/** A rounded box fitted to one rock: its shape's bounds `box`, scaled, rotated and placed. */
+export function fitRockCollider(
+  box: Box3,
+  x: number,
+  y: number,
+  z: number,
+  rotation: Quaternion,
+  sx: number,
+  sy: number,
+  sz: number,
+): RockColliderShape {
+  scale.set(sx, sy, sz)
+  box.getSize(half).multiply(scale).multiplyScalar(FIT / 2)
+  box.getCenter(center).multiply(scale).applyQuaternion(rotation)
+  const border = Math.min(half.x, half.y, half.z) * ROUNDING
+  return {
+    halfExtents: [Math.max(half.x - border, 0.01), Math.max(half.y - border, 0.01), Math.max(half.z - border, 0.01)],
+    borderRadius: border,
+    translation: [x + center.x, y + center.y, z + center.z],
+    rotation: [rotation.x, rotation.y, rotation.z, rotation.w],
+  }
+}
+
+/** Rounded boxes fitted to each solid rock's shape, placement and orientation. */
+export function rockColliderShapes(field: RockField, shapes: Record<RockClass, BufferGeometry[]>): RockColliderShape[] {
+  const colliders: RockColliderShape[] = []
+  const bounds = rockShapeBounds(shapes)
+  const rotation = new Quaternion()
+  const euler = new Euler()
+  for (const cls of SOLID_ROCK_CLASSES) {
     for (const rock of field[cls]) {
-      const box = bounds[rock.variant]
-      scale.set(rock.sx, rock.sy, rock.sz)
-      box.getSize(half).multiply(scale).multiplyScalar(FIT / 2)
       rotation.setFromEuler(euler.set(rock.pitch, rock.yaw, rock.roll, 'XZY'))
-      box.getCenter(center).multiply(scale).applyQuaternion(rotation)
-      const border = Math.min(half.x, half.y, half.z) * ROUNDING
-      colliders.push({
-        halfExtents: [Math.max(half.x - border, 0.01), Math.max(half.y - border, 0.01), Math.max(half.z - border, 0.01)],
-        borderRadius: border,
-        translation: [rock.x + center.x, rock.y + center.y, rock.z + center.z],
-        rotation: [rotation.x, rotation.y, rotation.z, rotation.w],
-      })
+      colliders.push(fitRockCollider(bounds[cls][rock.variant], rock.x, rock.y, rock.z, rotation, rock.sx, rock.sy, rock.sz))
     }
   }
   return colliders

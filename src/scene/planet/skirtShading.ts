@@ -1,4 +1,4 @@
-import type { Material, WebGLProgramParametersWithUniforms } from 'three'
+import { MeshDepthMaterial, type Material, type WebGLProgramParametersWithUniforms } from 'three'
 
 /*
  * Terrain is flat shaded (each triangle lit by its own facet), which would light a chunk's skirts as
@@ -21,5 +21,22 @@ export function withSkirtShading<T extends Material>(material: T): T {
   }
   const key = material.customProgramCacheKey.bind(material)
   material.customProgramCacheKey = () => `${key()}|skirt-shading`
+  return material
+}
+
+/**
+ * The terrain's shadow-pass material, without the skirts: they hang below the ground, and as
+ * casters they would print a dotted shadow line along every chunk border under a low sun. Skirt
+ * triangles are made of skirt vertices only, so moving those out of the clip volume drops them
+ * whole, without a discard that would slow down the rest of the pass.
+ */
+export function createSkirtlessDepthMaterial(): MeshDepthMaterial {
+  const material = new MeshDepthMaterial()
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float skirt;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\n\tif ( skirt > 0.5 ) gl_Position = vec4( 0.0, 0.0, 2.0, 1.0 );')
+  }
+  material.customProgramCacheKey = () => 'skirtless-depth'
   return material
 }

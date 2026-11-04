@@ -5,8 +5,8 @@ import { useMemo, useRef, type ReactNode } from 'react'
 import { Vector3, type PerspectiveCamera as PerspectiveCameraImpl } from 'three'
 import { CAMERA } from '@/config/camera'
 import { COLLISION, FRAME_PRIORITY } from '@/config/game'
+import type { Planet } from '@/game/planet'
 import { wrapAngle, type CameraMode } from '@/game/player'
-import type { Terrain } from '@/game/world'
 import { inputState } from '@/input/inputState'
 import { useGameStore } from '@/stores/gameStore'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -14,16 +14,14 @@ import { cameraRuntime, miningRuntime, playerRuntime } from '@/stores/runtime'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { RegionDef } from '@/types/content'
 import { clamp, DEG2RAD, easeInOutCubic, lerp } from '@/utils/math'
-import { createFollowState, firstPersonPose, thirdPersonPose, type ProbeCast } from './follow'
+import { createFollowState, firstPersonPose, keepAboveGround, thirdPersonPose, type ProbeCast } from './follow'
 import { createMenuShot, createPose } from './shots'
 
 type ViewMode = 'menu' | CameraMode
 
 interface CameraRigProps {
   region: RegionDef
-  terrain: Terrain
-  /** The landing point the main menu frames. */
-  focus: { x: number; y: number; z: number }
+  planet: Planet
   /** Objects that move with the camera, such as the first-person tool. */
   children?: ReactNode
 }
@@ -34,15 +32,16 @@ const reducedMotion = typeof window.matchMedia === 'function' ? window.matchMedi
 /**
  * The only camera controller: the menu pan, third- and first-person follow with mouse-look, and
  * smooth blends between them (a long arcing flight between menu and game, a quick blend between
- * the two follow modes). Must sit inside <Physics> for its collision probe.
+ * the two follow modes). On the Moon "up" is away from its centre wherever the camera is, and
+ * the follow views work in the astronaut's own frame. Must sit inside <Physics> for its collision probe.
  */
-export function CameraRig({ region, terrain, focus, children }: CameraRigProps) {
+export function CameraRig({ region, planet, children }: CameraRigProps) {
   const cameraRef = useRef<PerspectiveCameraImpl>(null)
   const { world, rapier } = useRapier()
   const inMenu = useGameStore((s) => s.phase === 'menu')
   const cameraMode = usePlayerStore((s) => s.cameraMode)
   const mode: ViewMode = inMenu ? 'menu' : cameraMode
-  const menuShot = useMemo(() => createMenuShot(region, focus), [region, focus])
+  const menuShot = useMemo(() => createMenuShot(region, planet), [region, planet])
 
   const cast = useMemo<ProbeCast>(() => {
     const probe = new rapier.Ball(CAMERA.thirdPerson.collisionRadius)
@@ -59,6 +58,7 @@ export function CameraRig({ region, terrain, focus, children }: CameraRigProps) 
     from: createPose(),
     look: new Vector3(),
     head: new Vector3(),
+    up: new Vector3(),
     fromFov: CAMERA.fov.menu,
     start: 0,
     duration: 0,
@@ -125,15 +125,16 @@ export function CameraRig({ region, terrain, focus, children }: CameraRigProps) 
       goal.position.copy(camera.position)
       goal.target.copy(r.look)
     } else if (mode === 'third-person') {
-      thirdPersonPose(r.follow, playerRuntime.renderPosition, cameraRuntime.yaw, cameraRuntime.pitch, dt, cast, terrain, goal)
-    } else firstPersonPose(playerRuntime.renderPosition, cameraRuntime.yaw, cameraRuntime.pitch, goal)
+      thirdPersonPose(r.follow, playerRuntime.renderPosition, playerRuntime.renderFrame, cameraRuntime.yaw, cameraRuntime.pitch, dt, cast, planet, goal)
+    } else firstPersonPose(playerRuntime.renderPosition, playerRuntime.renderFrame, cameraRuntime.yaw, cameraRuntime.pitch, goal)
 
     let fov = CAMERA.fov[mode]
     if (r.transitioning) {
       const t = clamp((time - r.start) / r.duration, 0, 1)
       const eased = easeInOutCubic(t)
       camera.position.lerpVectors(r.from.position, goal.position, eased)
-      camera.position.y += Math.sin(Math.PI * eased) * r.arc
+      // Arc up and away from the ground (straight up from the Moon's centre).
+      camera.position.addScaledVector(r.up.copy(camera.position).normalize(), Math.sin(Math.PI * eased) * r.arc)
       r.look.lerpVectors(r.from.target, goal.target, eased)
       fov = lerp(r.fromFov, fov, eased)
       if (t >= 1) r.transitioning = false
@@ -148,10 +149,10 @@ export function CameraRig({ region, terrain, focus, children }: CameraRigProps) 
 
     // Never dip into the ground, including mid-blend (first person is already at eye height).
     if (mode !== 'first-person' || r.transitioning) {
-      const clearance = mode === 'menu' ? CAMERA.groundClearance : CAMERA.thirdPerson.groundClearance
-      const ground = terrain.heightAt(camera.position.x, camera.position.z) + clearance
-      if (camera.position.y < ground) camera.position.y = ground
+      keepAboveGround(planet, camera.position, mode === 'menu' ? CAMERA.groundClearance : CAMERA.thirdPerson.groundClearance)
     }
+    // The horizon stays level: the camera's up is the local vertical.
+    camera.up.copy(camera.position).normalize()
     camera.lookAt(r.look)
     // Mining tremble: a small, quickly fading wobble of the view itself, not of where it aims.
     const shake = miningRuntime.shake
@@ -166,7 +167,9 @@ export function CameraRig({ region, terrain, focus, children }: CameraRigProps) 
     cameraRuntime.position.z = camera.position.z
     // At or right next to the helmet, the body would fill the view: hide it from the camera.
     const p = playerRuntime.renderPosition
-    r.head.set(p.x, p.y + CAMERA.firstPerson.eyeHeight, p.z)
+    const up = playerRuntime.renderFrame.up
+    const eye = CAMERA.firstPerson.eyeHeight
+    r.head.set(p.x + up.x * eye, p.y + up.y * eye, p.z + up.z * eye)
     cameraRuntime.bodyHidden = following && camera.position.distanceTo(r.head) < CAMERA.hideBodyDistance
   }, FRAME_PRIORITY.camera)
 

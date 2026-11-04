@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { CameraMode, PlayerSpawn } from '@/game/player'
+import type { CameraMode, PlayerPose } from '@/game/player'
 import {
   baseSurvivalMax,
   fullSurvivalStats,
@@ -11,8 +11,8 @@ interface PlayerState {
   survival: SurvivalStats
   survivalMax: SurvivalMax
   cameraMode: CameraMode
-  /** Where the body appears next time it is created: a saved position, or null for the landing zone. */
-  spawnPoint: PlayerSpawn | null
+  /** Where the body appears next time it is created: a saved pose (world space), or null for the landing zone. */
+  spawnPoint: PlayerPose | null
   setSurvival: (patch: Partial<SurvivalStats>) => void
   setCameraMode: (cameraMode: CameraMode) => void
   toggleCameraMode: () => void

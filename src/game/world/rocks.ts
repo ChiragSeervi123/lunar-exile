@@ -29,14 +29,21 @@ export interface RockPlacement {
 
 export type RockField = Record<RockClass, RockPlacement[]>
 
-const SIZE: Record<RockClass, [number, number]> = {
+/** Size range per class, meters (scaled further by context). */
+export const ROCK_SIZE: Record<RockClass, [number, number]> = {
   debris: [0.12, 0.42],
   medium: [0.45, 1.3],
   boulder: [1.6, 4.2],
 }
 
 /** Fraction of a rock's height pushed below the surface. */
-const SINK: Record<RockClass, number> = { debris: 0.08, medium: 0.12, boulder: 0.2 }
+export const ROCK_SINK: Record<RockClass, number> = { debris: 0.08, medium: 0.12, boulder: 0.2 }
+
+/**
+ * How far each class is scattered, as a fraction of the playable half-size (a square around the
+ * map centre). Rocks may sit a little outside the playable area, where they are still in view.
+ */
+export const ROCK_SCATTER_EXTENT: Record<RockClass, number> = { debris: 1, medium: 1.15, boulder: 1.15 }
 
 /** Clearance around the spawn point per class, meters. */
 const SPAWN_CLEARANCE: Record<RockClass, number> = {
@@ -62,13 +69,13 @@ export function scatterRocks(terrain: Terrain, region: RegionDef, debrisDensity:
   const place = (cls: RockClass, rng: Rng, x: number, z: number, scale: number, tall = false) => {
     if (nearSpawn(cls, x, z)) return
     const [nx, ny, nz] = terrain.normalAt(x, z)
-    const [min, max] = SIZE[cls]
+    const [min, max] = ROCK_SIZE[cls]
     const size = randRange(rng, min, max) * scale
     const sy = size * (tall ? randRange(rng, 1.5, 2.6) : randRange(rng, 0.55, 1))
     terrain.sample(x, z, sample)
     field[cls].push({
       x,
-      y: sample.height - sy * SINK[cls],
+      y: sample.height - sy * ROCK_SINK[cls],
       z,
       // Lean with the slope, plus a little random tilt.
       pitch: Math.atan2(nz, ny) * 0.7 + randRange(rng, -0.14, 0.14),
@@ -123,8 +130,8 @@ export function scatterRocks(terrain: Terrain, region: RegionDef, debrisDensity:
       }
     }
   }
-  scatter('boulder', boulderRng, def.boulderDensity, half * 1.15)
-  scatter('medium', createRng(deriveSeed(seed, 'medium-rocks')), def.mediumDensity, half * 1.15)
-  scatter('debris', createRng(deriveSeed(seed, 'debris')), def.debrisDensity * debrisDensity, half)
+  scatter('boulder', boulderRng, def.boulderDensity, half * ROCK_SCATTER_EXTENT.boulder)
+  scatter('medium', createRng(deriveSeed(seed, 'medium-rocks')), def.mediumDensity, half * ROCK_SCATTER_EXTENT.medium)
+  scatter('debris', createRng(deriveSeed(seed, 'debris')), def.debrisDensity * debrisDensity, half * ROCK_SCATTER_EXTENT.debris)
   return field
 }

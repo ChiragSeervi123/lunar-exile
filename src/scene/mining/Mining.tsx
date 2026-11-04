@@ -3,7 +3,8 @@ import { useEffect, useMemo } from 'react'
 import type { PerspectiveCamera } from 'three'
 import { FRAME_PRIORITY } from '@/config/game'
 import { getTool } from '@/data/tools'
-import { getRegionDeposits, type Deposit } from '@/game/mining'
+import type { Deposit } from '@/game/mining'
+import { getLandingDeposits } from '@/game/planet'
 import { useGameStore } from '@/stores/gameStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { useWorldStore } from '@/stores/worldStore'
@@ -21,10 +22,9 @@ interface MiningProps {
   particleBudget: number
 }
 
-/** The region's deposits with their colliders, and the mining system and effects. Must sit inside <Physics>. */
+/** The landing site's deposits on the Moon with their colliders, and the mining system and effects. Must sit inside <Physics>. */
 export function Mining({ region, particleBudget }: MiningProps) {
-  const regionId = useWorldStore((s) => s.regionId)
-  const deposits = useMemo(() => getRegionDeposits(regionId), [regionId])
+  const deposits = getLandingDeposits()
   return (
     <>
       <DepositField region={region} deposits={deposits.list} />

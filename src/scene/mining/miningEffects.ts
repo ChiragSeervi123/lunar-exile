@@ -15,6 +15,7 @@ import { getItem } from '@/data/items'
 import { getResource } from '@/data/resources'
 import { DEPOSIT_BOUNDS, type Deposit } from '@/game/mining'
 import { miningRuntime, playerRuntime, type MiningEvent } from '@/stores/runtime'
+import { alongUp, depositUp } from './depositPose'
 import { ParticlePool } from './particles'
 
 /** Particles per second while the beam cuts. */
@@ -99,6 +100,8 @@ export function createMiningEffects(particleBudget: number, beamColor: string): 
   }
   const direction = new Vector3()
   const toPlayer = new Vector3()
+  const vertical = new Vector3()
+  const origin = new Vector3()
 
   /** Lays a beam mesh from the tool tip along the beam direction. */
   const stretch = (mesh: Mesh, radius: number, length: number) => {
@@ -113,35 +116,44 @@ export function createMiningEffects(particleBudget: number, beamColor: string): 
     if (!resource) return
     const item = getItem(resource.itemId)
     resourceColor.set(item?.color ?? resource.appearance.color)
+    // Directions are made with +Y up, then turned onto the deposit's own vertical.
+    depositUp(d, vertical)
     if (event.type === 'break') {
       const height = DEPOSIT_BOUNDS[resource.appearance.shape].height * d.size
-      const cy = d.y + height * 0.4
+      origin.set(d.x, d.y, d.z).addScaledVector(vertical, height * 0.4)
       for (let i = 0; i < BREAK_SPARKS; i++) {
         randomUnit(direction)
         direction.y = Math.abs(direction.y) * 0.8 + 0.2
+        alongUp(direction, vertical)
         const speed = 1.5 + Math.random() * 3
         color.copy(resourceColor).lerp(WHITE, Math.random() * 0.35)
         const life = 0.8 + Math.random() * 0.8
         const size = 0.06 + Math.random() * 0.06
-        sparks.spawn(d.x, cy, d.z, direction.x * speed, direction.y * speed, direction.z * speed, life, size, 0.02, color, 1)
+        sparks.spawn(origin.x, origin.y, origin.z, direction.x * speed, direction.y * speed, direction.z * speed, life, size, 0.02, color, 1)
       }
+      origin.set(d.x, d.y, d.z).addScaledVector(vertical, 0.15)
       for (let i = 0; i < BREAK_DUST; i++) {
         randomUnit(direction)
         direction.y = Math.abs(direction.y) * 0.6 + 0.15
+        alongUp(direction, vertical)
         const speed = 0.6 + Math.random() * 1.4
         color.copy(REGOLITH).lerp(resourceColor, 0.25)
         const life = 1.2 + Math.random()
-        dust.spawn(d.x, d.y + 0.15, d.z, direction.x * speed, direction.y * speed, direction.z * speed, life, 0.14, 0.5, color, 0.55)
+        dust.spawn(origin.x, origin.y, origin.z, direction.x * speed, direction.y * speed, direction.z * speed, life, 0.14, 0.5, color, 0.55)
       }
     } else {
       // Sparkles lift off the ore toward the astronaut.
       const p = playerRuntime.renderPosition
-      toPlayer.set(p.x - d.x, 0, p.z - d.z).normalize()
+      toPlayer.set(p.x - d.x, p.y - d.y, p.z - d.z)
+      toPlayer.addScaledVector(vertical, -toPlayer.dot(vertical)).normalize()
+      origin.set(d.x, d.y, d.z).addScaledVector(vertical, 0.2)
       for (let i = 0; i < COLLECT_SPARKLES; i++) {
         randomUnit(direction).multiplyScalar(0.6).addScaledVector(toPlayer, 1.4)
+        // Rising off the ground, whatever the sideways spread.
+        direction.addScaledVector(vertical, 1.8 + Math.random() - direction.dot(vertical))
         color.copy(resourceColor).lerp(WHITE, 0.3)
         const life = 0.5 + Math.random() * 0.4
-        sparks.spawn(d.x, d.y + 0.2, d.z, direction.x, 1.8 + Math.random(), direction.z, life, 0.06, 0, color, 1)
+        sparks.spawn(origin.x, origin.y, origin.z, direction.x, direction.y, direction.z, life, 0.06, 0, color, 1)
       }
     }
   }
@@ -193,6 +205,7 @@ export function createMiningEffects(particleBudget: number, beamColor: string): 
             dustDebt -= 1
             randomUnit(direction)
             direction.y = Math.abs(direction.y) + 0.4
+            alongUp(direction, vertical.copy(point).normalize())
             const speed = 0.5 + Math.random() * 0.8
             color.copy(REGOLITH).lerp(resourceColor, 0.3)
             const life = 0.9 + Math.random() * 0.7

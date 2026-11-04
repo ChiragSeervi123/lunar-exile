@@ -1,4 +1,5 @@
 import type { Deposit } from '@/game/mining'
+import { copyFrame, createFrame, type Frame } from '@/game/planet/frame'
 import type { AnimationState, Vec3 } from '@/game/player'
 import type { TargetKind } from './miningStore'
 
@@ -8,7 +9,7 @@ import type { TargetKind } from './miningStore'
  * allocations and React re-renders: never read during render, never serialised directly.
  */
 
-/** Where the player body is. */
+/** Where the player body is. Positions are world space, with the Moon's centre at the origin. */
 export const playerRuntime = {
   /** A player body exists in the scene. */
   active: false,
@@ -16,10 +17,17 @@ export const playerRuntime = {
   position: { x: 0, y: 0, z: 0 } as Vec3,
   /** Feet position interpolated for the current frame, for the camera, shadows and effects. */
   renderPosition: { x: 0, y: 0, z: 0 } as Vec3,
-  /** Body yaw, radians clockwise from north (-Z). */
+  /**
+   * The body's local frame (up away from the Moon's centre, east, north), carried along the ground
+   * by the physics steps. Yaw angles (the body's and the camera's) are measured in it.
+   */
+  frame: createFrame(),
+  /** The same frame at the render position, for the camera, the astronaut model and lighting. */
+  renderFrame: createFrame(),
+  /** Body yaw, radians clockwise from the frame's north. */
   facing: 0,
-  /** Feet position to move the body to at the next physics step (debug tools); null when none. */
-  teleport: null as { x: number; z: number } | null,
+  /** Feet position (world space) to move the body to at the next physics step (debug tools); null when none. */
+  teleport: null as Vec3 | null,
 }
 
 /** How the player body is moving (physics state). */
@@ -40,9 +48,9 @@ export const playerAnimation = {
 
 /** Where the camera is and looks. */
 export const cameraRuntime = {
-  /** Radians clockwise from north (-Z). */
+  /** Radians clockwise from north in the player's frame (playerRuntime.frame). */
   yaw: 0,
-  /** Radians, positive looks up. */
+  /** Radians above the local horizontal; positive looks up. */
   pitch: 0,
   position: { x: 0, y: 0, z: 0 } as Vec3,
   /** The camera is inside or right next to the helmet, so the body is hidden from it. */
@@ -95,10 +103,13 @@ export function resetMining(): void {
   miningRuntime.events.length = 0
 }
 
-export function placePlayer(x: number, y: number, z: number, facing: number): void {
+/** A body now stands at `feet` (world space) with `frame` and `facing`; the motion state starts at rest. */
+export function placePlayer(feet: Vec3, frame: Frame, facing: number): void {
   playerRuntime.active = true
-  playerRuntime.position = { x, y, z }
-  playerRuntime.renderPosition = { x, y, z }
+  playerRuntime.position = { x: feet.x, y: feet.y, z: feet.z }
+  playerRuntime.renderPosition = { x: feet.x, y: feet.y, z: feet.z }
+  copyFrame(playerRuntime.frame, frame)
+  copyFrame(playerRuntime.renderFrame, frame)
   playerRuntime.facing = facing
   playerMotion.velocity = { x: 0, y: 0, z: 0 }
   playerMotion.grounded = true

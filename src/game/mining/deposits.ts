@@ -20,6 +20,11 @@ export interface Deposit {
   pitch: number
   yaw: number
   roll: number
+  /**
+   * On the Moon: the full orientation as a quaternion (x, y, z, w), which replaces the Euler
+   * angles; the position is then world space, with the Moon's centre at the origin.
+   */
+  orientation?: [number, number, number, number]
   /** Size multiplier within the resource's appearance range. */
   size: number
   maxHealth: number

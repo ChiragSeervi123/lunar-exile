@@ -163,12 +163,13 @@ export function createPlanet(moon: MoonDef, landingRegion: RegionDef, landingReg
       const n = Math.abs(fbm3(rilles, pos.x / 900, pos.y / 900, pos.z / 900, 2))
       h -= b.rilles * (1 - smoothstep(0, 0.1, n))
     }
-    // Terraces: ground stepped into level shelves with steep, walkable risers.
+    // Terraces: ground stepped into level shelves with steep, walkable risers. Each riser takes up
+    // 60% of a step, so a 1.3 m triangle mesh follows it to within about 35 cm.
     if (b.terraces > 0) {
       const step = 7
       const level = h / step
       const floor = Math.floor(level)
-      const stepped = (floor + smoothstep(0.3, 0.7, level - floor)) * step
+      const stepped = (floor + smoothstep(0.2, 0.8, level - floor)) * step
       h = lerp(h, stepped, Math.min(1, b.terraces / step))
     }
 
