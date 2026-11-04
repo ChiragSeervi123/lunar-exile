@@ -26,5 +26,6 @@ scope.onmessage = (event) => {
   const transfer: Transferable[] = [mesh.positions.buffer, mesh.indices.buffer]
   if (mesh.normals) transfer.push(mesh.normals.buffer)
   if (mesh.colors) transfer.push(mesh.colors.buffer)
+  if (mesh.skirt) transfer.push(mesh.skirt.buffer)
   scope.postMessage({ id, mesh }, transfer)
 }

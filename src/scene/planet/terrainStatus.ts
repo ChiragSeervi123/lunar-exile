@@ -10,4 +10,9 @@ export const planetTerrainStatus = {
   /** Average build time of recent chunks, ms (in the workers). */
   buildMs: 0,
   triangles: 0,
+  /** Average time from requesting a chunk to receiving it, ms. */
+  latencyMs: 0,
+  sent: 0,
+  received: 0,
+  duplicates: 0,
 }

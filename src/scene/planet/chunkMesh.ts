@@ -36,6 +36,8 @@ export interface ChunkMesh {
   positions: Float32Array
   normals: Float32Array | null
   colors: Float32Array | null
+  /** 1 on skirt vertices, 0 on the ground (drawing only). */
+  skirt: Uint8Array | null
   indices: Uint16Array | Uint32Array
   /** Bounding sphere radius around `center`, meters. */
   radius: number
@@ -89,6 +91,8 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
   const cy = centerDir.y * R
   const cz = centerDir.z * R
   const spread = (options.jitter * 2) / cells
+  // Vertex spacing: features smaller than this can't show, so they aren't sampled.
+  const spacing = nodeSize(R, depth) / res
 
   for (let j = -1; j <= res + 1; j++) {
     for (let i = -1; i <= res + 1; i++) {
@@ -97,16 +101,18 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
       let s = gridParam(gi, cells)
       let t = gridParam(gj, cells)
       // Jitter every point inside the face; points on the face's own edge stay put so the
-      // neighbouring face meets them exactly.
+      // neighbouring face meets them exactly. Points on a chunk border only move along it: borders
+      // then stay on the same great circle at every detail level, so a finer chunk meets a coarser
+      // one with no sideways sliver between them (the skirts cover the remaining vertical step).
       if (gi > 0 && gi < cells && gj > 0 && gj < cells) {
-        s += (hash(seed, face, depth, gi, gj, SALT_JITTER_S) - 0.5) * spread
-        t += (hash(seed, face, depth, gi, gj, SALT_JITTER_T) - 0.5) * spread
+        if (gi % res !== 0) s += (hash(seed, face, depth, gi, gj, SALT_JITTER_S) - 0.5) * spread
+        if (gj % res !== 0) t += (hash(seed, face, depth, gi, gj, SALT_JITTER_T) - 0.5) * spread
       }
       faceDirection(face, s, t, dir)
       const inside = i >= 0 && i <= res && j >= 0 && j <= res
       let r: number
       if (inside && render) {
-        planet.sample(dir, sample)
+        planet.sample(dir, sample, spacing)
         const v = j * n + i
         albedo![v] = sample.albedo
         interior![v] = sample.craterInterior
@@ -117,7 +123,7 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
         tint![v * 4 + 2] = sample.tintB
         tint![v * 4 + 3] = sample.tintAmount
         r = R + sample.height
-      } else r = planet.surfaceRadius(dir)
+      } else r = planet.surfaceRadius(dir, spacing)
       if (inside) {
         minHeight = Math.min(minHeight, r - R)
         maxHeight = Math.max(maxHeight, r - R)
@@ -129,11 +135,14 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
     }
   }
 
+  // Skirt vertices: a top row (copies of the edge) and a bottom row, so every skirt triangle is
+  // made of skirt vertices only and can be shaded as the ground it hangs from.
   const skirtCount = render ? 4 * res : 0
-  const vertexCount = n * n + skirtCount
+  const vertexCount = n * n + 2 * skirtCount
   const positions = new Float32Array(vertexCount * 3)
   const normals = render ? new Float32Array(vertexCount * 3) : null
   const colors = render ? new Float32Array(vertexCount * 3) : null
+  const skirt = render ? new Uint8Array(vertexCount) : null
   let radius2 = 0
 
   for (let j = 0; j <= res; j++) {
@@ -146,7 +155,8 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
       positions[v * 3] = px
       positions[v * 3 + 1] = py
       positions[v * 3 + 2] = pz
-      radius2 = Math.max(radius2, px * px + py * py + pz * pz)
+      // Bounds from the stored (float32) values, so they cover exactly what is drawn.
+      radius2 = Math.max(radius2, positions[v * 3] ** 2 + positions[v * 3 + 1] ** 2 + positions[v * 3 + 2] ** 2)
       if (!normals || !colors) continue
       // Normal from the neighbouring grid points (u × v points outward on every face).
       const ux = wx[k + 1] - wx[k - 1]
@@ -205,22 +215,23 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
     for (let j = res; j > 0; j--) edge.push(j * n) // left, downward
     const drop = Math.max(2, (nodeSize(R, depth) / res) * 1.5)
     edge.forEach((v, e) => {
-      const s = n * n + e
+      const top = n * n + e
+      const s = n * n + skirtCount + e
       const px = positions[v * 3] + cx
       const py = positions[v * 3 + 1] + cy
       const pz = positions[v * 3 + 2] + cz
       const l = Math.hypot(px, py, pz)
-      const qx = positions[v * 3] - (px / l) * drop
-      const qy = positions[v * 3 + 1] - (py / l) * drop
-      const qz = positions[v * 3 + 2] - (pz / l) * drop
-      positions[s * 3] = qx
-      positions[s * 3 + 1] = qy
-      positions[s * 3 + 2] = qz
-      radius2 = Math.max(radius2, qx * qx + qy * qy + qz * qz)
+      positions[s * 3] = positions[v * 3] - (px / l) * drop
+      positions[s * 3 + 1] = positions[v * 3 + 1] - (py / l) * drop
+      positions[s * 3 + 2] = positions[v * 3 + 2] - (pz / l) * drop
+      radius2 = Math.max(radius2, positions[s * 3] ** 2 + positions[s * 3 + 1] ** 2 + positions[s * 3 + 2] ** 2)
       for (let c = 0; c < 3; c++) {
-        normals![s * 3 + c] = normals![v * 3 + c]
-        colors![s * 3 + c] = colors![v * 3 + c] * 0.7
+        positions[top * 3 + c] = positions[v * 3 + c]
+        normals![top * 3 + c] = normals![s * 3 + c] = normals![v * 3 + c]
+        colors![top * 3 + c] = colors![s * 3 + c] = colors![v * 3 + c]
       }
+      skirt![top] = 1
+      skirt![s] = 1
     })
   }
 
@@ -253,10 +264,10 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
   }
   // Edges were listed counter-clockwise around the chunk, so outward is always to the right.
   for (let e = 0; e < skirtCount; e++) {
-    const p0 = edge[e]
-    const p1 = edge[(e + 1) % skirtCount]
-    const s0 = n * n + e
-    const s1 = n * n + ((e + 1) % skirtCount)
+    const p0 = n * n + e
+    const p1 = n * n + ((e + 1) % skirtCount)
+    const s0 = p0 + skirtCount
+    const s1 = p1 + skirtCount
     indices[w++] = p0
     indices[w++] = s0
     indices[w++] = p1
@@ -272,6 +283,7 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
     positions,
     normals,
     colors,
+    skirt,
     indices,
     radius: Math.sqrt(radius2),
     minHeight,

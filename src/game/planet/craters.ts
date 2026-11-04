@@ -57,8 +57,11 @@ const TIERS: Tier[] = [
 const CACHE_SIZE = 4096
 
 export interface SphereCraterField {
-  /** Adds every crater affecting datum point `pos` (unit direction × radius). */
-  sample(pos: Vec3, out: CraterAccumulator): void
+  /**
+   * Adds every crater affecting datum point `pos` (unit direction × radius). Sampled `spacing`
+   * meters apart, size tiers whose largest crater is smaller than that spacing are skipped.
+   */
+  sample(pos: Vec3, out: CraterAccumulator, spacing?: number): void
 }
 
 /**
@@ -148,8 +151,9 @@ export function createSphereCraterField(
   const lastList: SphereCrater[][] = TIERS.map(() => [])
 
   return {
-    sample(pos, out) {
+    sample(pos, out, spacing = 0) {
       for (let t = 0; t < TIERS.length; t++) {
+        if (TIERS[t].maxRadius < spacing) continue
         const c = TIERS[t].cell
         const ix = Math.floor(pos.x / c)
         const iy = Math.floor(pos.y / c)

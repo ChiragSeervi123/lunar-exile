@@ -10,6 +10,7 @@ import { createChunkBuilder, type ChunkBuilder } from './chunkBuilder'
 import type { ChunkMesh, ChunkPalette, RGB } from './chunkMesh'
 import { createLodSelection, selectLod, type ChunkBounds, type LodSelection } from './lod'
 import { withPlanetShadow } from './planetShadow'
+import { withSkirtShading } from './skirtShading'
 import { planetTerrainStatus } from './terrainStatus'
 
 interface ChunkRecord {
@@ -49,6 +50,7 @@ function chunkRecord(chunk: ChunkMesh, material: MeshStandardMaterial, planetRad
   geometry.setAttribute('position', new BufferAttribute(chunk.positions, 3))
   geometry.setAttribute('normal', new BufferAttribute(chunk.normals!, 3))
   geometry.setAttribute('color', new BufferAttribute(chunk.colors!, 3))
+  geometry.setAttribute('skirt', new BufferAttribute(chunk.skirt!, 1))
   geometry.setIndex(new BufferAttribute(chunk.indices, 1))
   geometry.boundingSphere = new Sphere(new Vector3(), chunk.radius)
   const mesh = new Mesh(geometry, material)
@@ -75,7 +77,7 @@ export function PlanetTerrain({ planet, palette, depth, split }: PlanetTerrainPr
   const group = useRef<Group>(null)
   const state = useRef<TerrainState | null>(null)
   const material = useMemo(
-    () => withPlanetShadow(new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.96, metalness: 0 })),
+    () => withSkirtShading(withPlanetShadow(new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.96, metalness: 0 }))),
     [],
   )
   useEffect(() => () => material.dispose(), [material])
@@ -128,7 +130,10 @@ export function PlanetTerrain({ planet, palette, depth, split }: PlanetTerrainPr
     const { records, builder, selection, shown } = s
 
     for (const chunk of builder.take(PLANET_TERRAIN.uploadsPerFrame)) {
-      if (records.has(chunk.key)) continue
+      if (records.has(chunk.key)) {
+        planetTerrainStatus.duplicates++
+        continue
+      }
       const record = chunkRecord(chunk, material, planet.radius, s.frame)
       root.add(record.mesh)
       records.set(chunk.key, record)
@@ -176,6 +181,9 @@ export function PlanetTerrain({ planet, palette, depth, split }: PlanetTerrainPr
     planetTerrainStatus.cached = records.size
     planetTerrainStatus.queued = builder.queued
     planetTerrainStatus.inFlight = builder.inFlight
+    planetTerrainStatus.latencyMs = builder.latency
+    planetTerrainStatus.sent = builder.counts.sent
+    planetTerrainStatus.received = builder.counts.received
     planetTerrainStatus.triangles = triangles
     if (!planetTerrainStatus.ready) {
       const settled = builder.queued === 0 && builder.inFlight === 0 && selection.wanted.length === 0

@@ -33,12 +33,16 @@ export interface Planet {
   /** Lowest and highest ground relative to the radius, meters, with margin. */
   minHeight: number
   maxHeight: number
-  /** Ground and surface data at a unit direction. */
-  sample(dir: Vec3, out: PlanetSample): PlanetSample
+  /**
+   * Ground and surface data at a unit direction. `spacing` is how far apart the caller samples
+   * (meters, 0 = full detail): craters and bumps too small to show at that spacing are left out,
+   * which keeps distant, coarse terrain cheap and free of aliasing.
+   */
+  sample(dir: Vec3, out: PlanetSample, spacing?: number): PlanetSample
   /** Ground height above the radius at a unit direction, meters. */
   heightAt(dir: Vec3): number
   /** Distance from the Moon's centre to the ground at a unit direction. */
-  surfaceRadius(dir: Vec3): number
+  surfaceRadius(dir: Vec3, spacing?: number): number
   /** Unit ground normal at a unit direction. */
   normalAt(dir: Vec3, out: Vec3): Vec3
   provinceAt(dir: Vec3): Province
@@ -58,6 +62,8 @@ const CHART_BLEND = 480
  */
 const MIN_HEIGHT = -140
 const MAX_HEIGHT = 220
+/** Surface bumps (13 m and 4.5 m wavelengths) are left out of terrain sampled coarser than this, meters. */
+const ROUGHNESS_CUTOFF = 13
 /** Offset for normals by finite differences, meters (as on the flat map). */
 const NORMAL_STEP = 0.75
 
@@ -128,13 +134,13 @@ export function createPlanet(moon: MoonDef, landingRegion: RegionDef, landingReg
   const chart: ChartPoint = { x: 0, z: 0, distance: 0 }
   const pos = vec3()
 
-  const sampleGlobal = (dir: Vec3, out: PlanetSample) => {
+  const sampleGlobal = (dir: Vec3, out: PlanetSample, spacing: number) => {
     setVec(pos, dir.x * R, dir.y * R, dir.z * R)
     const b = provinces.blend(dir, blend)
     let h =
       b.relief * fbm3(relief, pos.x / 520, pos.y / 520, pos.z / 520, 4) +
       b.relief * 0.3 * fbm3(relief, pos.x / 140 + 31.7, pos.y / 140 - 12.3, pos.z / 140 + 5.9, 3) +
-      b.roughness * (0.7 * detail(pos.x / 13, pos.y / 13, pos.z / 13) + 0.3 * detail(pos.x / 4.5, pos.y / 4.5, pos.z / 4.5))
+      (spacing > ROUGHNESS_CUTOFF ? 0 : b.roughness * (0.7 * detail(pos.x / 13, pos.y / 13, pos.z / 13) + 0.3 * detail(pos.x / 4.5, pos.y / 4.5, pos.z / 4.5)))
 
     // Mountain ranges: sharp crests gathered into separate massifs. Two single-octave ridge layers
     // rather than a ridged fractal, which piles every octave's slope together into sheer walls;
@@ -170,7 +176,7 @@ export function createPlanet(moon: MoonDef, landingRegion: RegionDef, landingReg
     out.craterInterior = 0
     out.craterRim = 0
     out.ejecta = 0
-    craters.sample(pos, out)
+    craters.sample(pos, out, spacing)
     out.albedo = clamp(b.albedo + 0.5 * fbm3(albedoNoise, pos.x / 850, pos.y / 850, pos.z / 850, 3), 0, 1)
     out.mountain = mountain
     out.province = b.dominant
@@ -183,9 +189,9 @@ export function createPlanet(moon: MoonDef, landingRegion: RegionDef, landingReg
     return out
   }
 
-  const sample = (dir: Vec3, out: PlanetSample): PlanetSample => {
+  const sample = (dir: Vec3, out: PlanetSample, spacing = 0): PlanetSample => {
     const arc = Math.acos(clamp(dir.y, -1, 1)) * R
-    if (arc >= CHART_BLEND) return sampleGlobal(dir, out)
+    if (arc >= CHART_BLEND) return sampleGlobal(dir, out, spacing)
     chartCoordinates(dir, R, chart)
     terrain.sample(chart.x, chart.z, flat)
     const w = 1 - smoothstep(CHART_PURE, CHART_BLEND, arc)
@@ -202,7 +208,7 @@ export function createPlanet(moon: MoonDef, landingRegion: RegionDef, landingReg
       out.tintR = out.tintG = out.tintB = out.tintAmount = 0
       return out
     }
-    sampleGlobal(dir, out)
+    sampleGlobal(dir, out, spacing)
     out.height = lerp(out.height, flat.height, w)
     out.craterInterior = lerp(out.craterInterior, flat.craterInterior, w)
     out.craterRim = lerp(out.craterRim, flat.craterRim, w)
@@ -215,7 +221,7 @@ export function createPlanet(moon: MoonDef, landingRegion: RegionDef, landingReg
   }
 
   const scratch = createPlanetSample()
-  const heightAt = (dir: Vec3) => sample(dir, scratch).height
+  const heightAt = (dir: Vec3, spacing = 0) => sample(dir, scratch, spacing).height
 
   const e1 = vec3()
   const e2 = vec3()
@@ -245,7 +251,7 @@ export function createPlanet(moon: MoonDef, landingRegion: RegionDef, landingReg
     maxHeight: MAX_HEIGHT,
     sample,
     heightAt,
-    surfaceRadius: (dir) => R + heightAt(dir),
+    surfaceRadius: (dir, spacing = 0) => R + heightAt(dir, spacing),
     normalAt,
     provinceAt: (dir) => (Math.acos(clamp(dir.y, -1, 1)) * R < (CHART_PURE + CHART_BLEND) / 2 ? provinces.provinces[landingIndex] : provinces.at(dir)),
     spawn: { position: vec3(0, R + heightAt(spawnDir), 0), frame: createFrame() },
