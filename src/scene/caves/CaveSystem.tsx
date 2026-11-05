@@ -29,6 +29,8 @@ export function CaveSystem({ palette }: { palette: SurfacePaletteDef }) {
 
   // Compile the rock's shader now, with the scene's lights, instead of when the first block comes
   // into view: that stalled one frame by about 0.1 s on the way to the first cave of a session.
+  // Synchronous `compile`, once: `compileAsync` polls the program on a timer, and a poll landing
+  // after the program was replaced queried a deleted program (a WebGL error).
   const { gl, scene, camera } = useThree()
   useEffect(() => {
     const geometry = new BufferGeometry()
@@ -38,9 +40,8 @@ export function CaveSystem({ palette }: { palette: SurfacePaletteDef }) {
     const probe = new Mesh(geometry, material)
     probe.castShadow = true
     probe.receiveShadow = true
-    gl.compileAsync(probe, camera, scene)
-      .catch(() => {})
-      .finally(() => geometry.dispose())
+    gl.compile(probe, camera, scene)
+    geometry.dispose()
   }, [gl, scene, camera, material])
 
   useEffect(() => {
