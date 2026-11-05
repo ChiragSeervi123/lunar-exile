@@ -1,7 +1,7 @@
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { useRapier } from '@react-three/rapier'
 import { useEffect, useMemo, useRef } from 'react'
-import { MeshStandardMaterial, type Group } from 'three'
+import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, type Group } from 'three'
 import { FRAME_PRIORITY } from '@/config/game'
 import { getCaveQueries, getPlanet } from '@/game/planet'
 import { useCaveStore } from '@/stores/caveStore'
@@ -26,6 +26,22 @@ export function CaveSystem({ palette }: { palette: SurfacePaletteDef }) {
     [],
   )
   useEffect(() => () => material.dispose(), [material])
+
+  // Compile the rock's shader now, with the scene's lights, instead of when the first block comes
+  // into view: that stalled one frame by about 0.1 s on the way to the first cave of a session.
+  const { gl, scene, camera } = useThree()
+  useEffect(() => {
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(9), 3))
+    geometry.setAttribute('color', new BufferAttribute(new Float32Array(9), 3))
+    geometry.setAttribute('sky', new BufferAttribute(new Float32Array(3), 1))
+    const probe = new Mesh(geometry, material)
+    probe.castShadow = true
+    probe.receiveShadow = true
+    gl.compileAsync(probe, camera, scene)
+      .catch(() => {})
+      .finally(() => geometry.dispose())
+  }, [gl, scene, camera, material])
 
   useEffect(() => {
     const root = group.current

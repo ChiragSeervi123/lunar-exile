@@ -136,7 +136,11 @@ export function createCaveStreamer(options: {
       for (const l of loaded.values()) {
         while (l.queue.length > 0 && performance.now() - started < BUDGET) {
           const b = l.queue.shift()!
-          add(l, buildCaveBlock(l.cave, l.shape, l.ground, digsOf(l.cave.id), b.bx, b.by, b.bz), key(b.bx, b.by, b.bz))
+          const k = key(b.bx, b.by, b.bz)
+          // A block queued again after a dig keeps its old rock until the new is ready.
+          const old = l.built.get(k)
+          if (old) remove(old)
+          add(l, buildCaveBlock(l.cave, l.shape, l.ground, digsOf(l.cave.id), b.bx, b.by, b.bz), k)
         }
       }
       stats.caves = loaded.size
@@ -147,18 +151,27 @@ export function createCaveStreamer(options: {
     dug(caveId, x, y, z, radius) {
       const l = loaded.get(caveId)
       if (!l) return
-      const digs = digsOf(caveId)
+      // The block the bite is in is rebuilt at once, so the hole shows (and can be walked into)
+      // this frame. Neighbours it reaches into (a bite near a block's edge) go to the front of the
+      // queue and follow within the streaming budget, instead of all in this one frame.
+      const home = key(Math.floor(x / BLOCK), Math.floor(y / BLOCK), Math.floor(z / BLOCK))
+      const later: { bx: number; by: number; bz: number }[] = []
       for (let bx = Math.floor((x - radius - 1) / BLOCK); bx <= Math.floor((x + radius + 1) / BLOCK); bx++) {
         for (let by = Math.floor((y - radius - 1) / BLOCK); by <= Math.floor((y + radius + 1) / BLOCK); by++) {
           for (let bz = Math.floor((z - radius - 1) / BLOCK); bz <= Math.floor((z + radius + 1) / BLOCK); bz++) {
             const k = key(bx, by, bz)
+            l.queue = l.queue.filter((b) => key(b.bx, b.by, b.bz) !== k)
+            if (k !== home) {
+              later.push({ bx, by, bz })
+              continue
+            }
             const old = l.built.get(k)
             if (old) remove(old)
-            l.queue = l.queue.filter((b) => key(b.bx, b.by, b.bz) !== k)
-            add(l, buildCaveBlock(l.cave, l.shape, l.ground, digs, bx, by, bz), k)
+            add(l, buildCaveBlock(l.cave, l.shape, l.ground, digsOf(caveId), bx, by, bz), k)
           }
         }
       }
+      l.queue.unshift(...later)
     },
     dispose() {
       for (const l of loaded.values()) for (const built of l.built.values()) remove(built)
