@@ -3,7 +3,9 @@ import { getRegionDeposits } from '@/game/mining'
 import {
   chartCoordinates,
   chartDirection,
+  fromCaveLocal,
   DEPOSIT_CELL_DEPTH,
+  getDiscoverySites,
   getLandingDeposits,
   getPlanet,
   getPlanetDeposits,
@@ -12,6 +14,8 @@ import {
 } from '@/game/planet'
 import { inputState } from '@/input/inputState'
 import { planetTerrainStatus } from '@/scene/planet/terrainStatus'
+import { useCaveStore } from '@/stores/caveStore'
+import { useExplorationStore } from '@/stores/explorationStore'
 import { useGameStore } from '@/stores/gameStore'
 import { useInputStore } from '@/stores/inputStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
@@ -21,7 +25,7 @@ import { usePlayerStore } from '@/stores/playerStore'
 import { cameraRuntime, miningRuntime, playerAnimation, playerMotion, playerRuntime, worldRuntime } from '@/stores/runtime'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useWorldStore } from '@/stores/worldStore'
-import { length, normalize, vec3, type Vec3 } from '@/utils/vec3'
+import { cross, length, normalize, vec3, type Vec3 } from '@/utils/vec3'
 
 declare global {
   interface Window {
@@ -118,14 +122,38 @@ export function exposeDebugHandles(): void {
     },
     /** Every province: name, kind and side, for `goTo`. */
     provinces: () => planet.provinces.map((p) => `${p.name} (${p.kind}, ${p.side} side)`),
-    /** Moves the astronaut to the middle of a province, by name or kind (e.g. 'Aitken Basin', 'mountains'). */
+    /** Moves the astronaut into a cave (by id or name), onto the floor of its first chamber. */
+    enterCave: (name: string) => {
+      const cave = planet.caves.find((c) => c.id === name || c.name.toLowerCase() === name.toLowerCase())
+      if (!cave) return 'no such cave; see sites()'
+      const c = cave.chambers[0].c
+      // Well inside the chamber; the body falls to its floor.
+      playerRuntime.teleport = fromCaveLocal(cave, vec3(c.x, c.y - cave.chambers[0].r * 0.4, c.z), vec3())
+      return cave.name
+    },
+    /** Every crater, structure and cave to find: name, kind and id, for `goTo`. */
+    sites: () => getDiscoverySites().map((s) => `${s.name} (${s.kind}, ${s.id})`),
+    /**
+     * Moves the astronaut to a province (by name or kind, e.g. 'Aitken Basin', 'mountains') or a
+     * place (by name or id, e.g. 'The Great Basin', 'cave-3'). Next to a place, not on top of it.
+     */
     goTo: (name: string) => {
       const q = name.toLowerCase()
       const p = planet.provinces.find((x) => x.name.toLowerCase() === q) ?? planet.provinces.find((x) => x.kind === q)
-      if (!p) return `no province "${name}"; see provinces()`
-      const r = planet.surfaceRadius(p.center)
-      playerRuntime.teleport = vec3(p.center.x * r, p.center.y * r, p.center.z * r)
-      return `${p.name} (${p.kind}, ${p.side} side)`
+      if (p) {
+        const r = planet.surfaceRadius(p.center)
+        playerRuntime.teleport = vec3(p.center.x * r, p.center.y * r, p.center.z * r)
+        return `${p.name} (${p.kind}, ${p.side} side)`
+      }
+      const site = getDiscoverySites().find((s) => s.name.toLowerCase() === q || s.id === q)
+      if (!site) return `nothing called "${name}"; see provinces() and sites()`
+      // Beside it: a cave's mouth or a structure would be in the way; a crater's rim is its edge.
+      const offset = (site.kind === 'crater' ? site.radius + 15 : site.clearance + 6) / planet.radius
+      const side = normalize(vec3(), cross(vec3(), site.dir, Math.abs(site.dir.y) < 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0)))
+      const d = normalize(vec3(), vec3(site.dir.x + side.x * offset, site.dir.y + side.y * offset, site.dir.z + side.z * offset))
+      const r = planet.surfaceRadius(d)
+      playerRuntime.teleport = vec3(d.x * r, d.y * r, d.z * r)
+      return `${site.name} (${site.kind})`
     },
     stores: {
       game: useGameStore,
@@ -136,6 +164,8 @@ export function exposeDebugHandles(): void {
       world: useWorldStore,
       mining: useMiningStore,
       notifications: useNotificationStore,
+      exploration: useExplorationStore,
+      caves: useCaveStore,
     },
   }
 }

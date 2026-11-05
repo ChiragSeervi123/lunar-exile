@@ -1,6 +1,6 @@
 # Milestone 4: the spherical Moon
 
-**Status: phases 1–4 of 8 done, paused for review.** The whole Moon is playable. Deposits across the Moon, exploration, caves, and the final performance and documentation pass follow after review.
+**Status: phases 1–5 of 8 done.** The whole Moon is playable, with deposits to mine everywhere on it. Exploration, caves, and the final performance and documentation pass follow.
 
 Approved defaults: a Moon 3.5 km in radius; sunlight fixed in space, with earthshine and a helmet lamp; Git with a baseline commit of Milestone 3.
 
@@ -12,8 +12,8 @@ Approved defaults: a Moon 3.5 km in radius; sunlight fixed in space, with earths
 | 2 | Terrain chunks, level of detail, Web Worker streaming, horizon culling | Done |
 | 3 | Planetary physics: collision tiles, controller, rocks | Done |
 | 4 | Cameras, lighting, mining on the sphere, save v4, switch-over | Done |
-| 5 | Deposits across the Moon (deeper and farther means rarer) | Next |
-| 6 | Exploration: discovering provinces and landmarks, alien structures | |
+| 5 | Deposits across the Moon (farther means rarer) | Done |
+| 6 | Exploration: discovering provinces and landmarks, alien structures | Next |
 | 7 | Caves: hybrid interiors, mineable dust | |
 | 8 | Performance pass, documentation | |
 
@@ -52,6 +52,16 @@ Approved defaults: a Moon 3.5 km in radius; sunlight fixed in space, with earths
   - The sun's shadow map follows the player, sized for the local sun height, and pauses while the sun is down.
   - The helmet lamp comes on by itself as the sun sets at the astronaut.
 - **Mining.** Milestone 3's deposits are placed on the Moon through the chart, keeping their ids, heights and orientation. Aiming, reach, mining effects and particle gravity all use the local vertical.
+
+### Deposits across the Moon (phase 5)
+
+- **Where.** Deposits are generated per 86 m cell anywhere on the Moon (`game/planet/planetDeposits.ts`), deterministically. The province at a cell's centre sets how many of each type it holds, from its `resources` list in `data/provinces.ts`. Each type then looks for its habitat within the cell, as on the landing site: titanium in dark ground, helium-3 and relics in crater floors, crystals and regolith on rims.
+- **Rarity.** Common types are equally common everywhere. Each rarer type is scarcer near the landing site and richer the farther away you go, up to about 3× for relics deep on the far side (`rarityBoost`). Rare-and-rarer finds per hectare roughly double from the landing site to the far side.
+- **Rules.** Deposits stand on the exact ground, on slopes up to 28°, at least 7 m apart and clear of solid rocks. None are placed inside the landing site's own field, which keeps Milestone 3's 102 deposits.
+- **Saves.** Ids are stable (`moon:face:ix:iy:resource:n`), so mined-out sites and ore on the ground save and load like the landing site's.
+- **Live set** (`scene/mining/depositStreamer.ts`). The landing site's deposits are always live, plus the Moon's within 160 m of the astronaut. New cells are built a few per frame, about 1.4 ms each, and the set switches only once they're all ready.
+  - **Colliders** are added and removed per deposit, so one you stand next to never loses its collider.
+  - **Drawing:** the field is rebuilt from shared shapes and materials, so no shader ever compiles while streaming. Deposits that stay keep their crumbling, ore and beam-heat state.
 - **HUD.** It shows the province underfoot, its side of the Moon and live coordinates. Latitude and longitude are fixed so that the landing point is at 0.67°N 23.47°E, as its label always said.
 
 ### Saves
@@ -73,7 +83,10 @@ All automated. They ran on this machine, partly on battery power, in headless Ch
 | Browser: Milestone 1 flow (dev and production) | 21/21 each |
 | Browser: Milestone 2 gameplay (dev and production) | 34/34 each |
 | Browser: Milestone 3 mining (dev and production) | 51/51 each |
+| Deposits across the Moon (determinism, province and habitat rules, rocks, slopes, spacing, rarity with distance, streaming) | 7/7 |
+| Browser: mining on the far side, its ore, saving and reloading the mined-out site (dev and production) | 9/9 each |
 | Leak check: 8 mining sessions (production) | no GPU resources, listeners or heap pile up, apart from the bounded terrain cache |
+| Leak check: 6 tours of 12 places across the Moon (production) | nothing grows after the first time each kind of deposit is drawn |
 
 Measured on this machine:
 - **Frame rate.** 120 fps with vsync while playing, p99 frame time 9–10 ms, and no frame over 25 ms while streaming during a 3 km flight at 60 m/s.
@@ -88,7 +101,7 @@ Things worth checking:
 - **Distance.** Walk or sprint in any direction from the landing site: the horizon is close and curved, and there is no edge.
 - **The far side.** Most of it is in night, so use the helmet lamp. The far side has more craters, brighter highlands, the Aitken Basin and terraced anomalies.
 - **Varied ground.** Mountains, rilles, crater fields, maria and mineral provinces, each with its own look and rockiness.
-- **Mining.** Mine at the landing site in both camera modes, as in Milestone 3.
+- **Mining.** Mine at the landing site in both camera modes, as in Milestone 3, then anywhere else. Try mare and mineral provinces for titanium and helium-3, and the far side's anomalies for alien crystals and relics.
 - **Saves.** Save anywhere on the Moon (Esc, then Main Menu), reload, and Continue. An older save loads on the landing site where it was.
 
 Moving around fast, in the browser console:
@@ -102,7 +115,7 @@ __lunarDebug.teleport(40, -25)        // a point on the landing-site map (x east
 
 ## Known limitations
 
-- **Coverage.** Deposits exist only around the landing site until phase 5, and exploration, discoveries and caves are still to come.
+- **Coverage.** Exploration, discoveries and caves are still to come (phases 6–7).
 - **Arrival banner.** The "Entering region" card shows only on arrival; province-change banners are part of phase 6.
 - **Chunk borders.** A very faint straight crease can show along chunk borders in close-up views: border vertices stay on the border line so detail levels meet without gaps.
 - **The sky from high up.** Sky objects (Earth, sun, stars) follow the camera at fixed distances, which is correct from anywhere a player can stand. From debug views several kilometers up, Earth can show in front of the Moon.

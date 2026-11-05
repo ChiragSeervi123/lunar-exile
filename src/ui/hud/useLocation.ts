@@ -37,17 +37,14 @@ const same = (a: PlayerLocation | null, b: PlayerLocation | null) => a?.province
 
 /**
  * The astronaut's location, refreshed a few times a second (not every frame, so the HUD doesn't
- * re-render constantly), and the first location of this session (where the astronaut arrived).
+ * re-render constantly).
  */
-export function useLocation(intervalMs = 250): { current: PlayerLocation | null; arrival: PlayerLocation | null } {
-  const [state, setState] = useState(() => {
-    const here = locate()
-    return { current: here, arrival: here }
-  })
+export function useLocation(intervalMs = 250): { current: PlayerLocation | null } {
+  const [state, setState] = useState(() => ({ current: locate() }))
   useEffect(() => {
     const id = setInterval(() => {
       const next = locate()
-      setState((prev) => (same(prev.current, next) ? prev : { current: next, arrival: prev.arrival ?? next }))
+      setState((prev) => (same(prev.current, next) ? prev : { current: next }))
     }, intervalMs)
     return () => clearInterval(id)
   }, [intervalMs])

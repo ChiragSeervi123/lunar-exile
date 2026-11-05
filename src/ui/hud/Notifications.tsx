@@ -1,4 +1,4 @@
-import { TriangleAlert } from 'lucide-react'
+import { Compass, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { MINING } from '@/config/mining'
 import { getItem } from '@/data/items'
@@ -41,6 +41,24 @@ function Toast({ notice }: { notice: Notice }) {
     return () => window.clearTimeout(timer)
   }, [leaving, dismiss, notice.id])
 
+  if (notice.kind === 'discovery') {
+    return (
+      <div
+        role="status"
+        className={cx(
+          'flex w-full items-center gap-3 border-l-2 border-earth-300 bg-ink-950/70 py-2 pl-3 pr-4',
+          leaving ? 'animate-toast-out' : 'animate-toast-in',
+        )}
+      >
+        <Compass size={16} strokeWidth={1.75} className="shrink-0 text-earth-300" aria-hidden />
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold tracking-[0.3em] text-earth-300">DISCOVERED</p>
+          <p className="truncate text-[13px] font-semibold tracking-[0.12em] text-lunar-100">{notice.title?.toUpperCase()}</p>
+          <p className="truncate text-[11px] text-lunar-300">{notice.detail}</p>
+        </div>
+      </div>
+    )
+  }
   const item = getItem(notice.itemId)
   if (!item) return null
   const rarity = RARITIES[item.rarity]

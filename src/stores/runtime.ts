@@ -77,6 +77,8 @@ export const miningRuntime = {
   inRange: false,
   /** The beam is on and cutting the target this frame. */
   mining: false,
+  /** The beam is digging into a cave wall (at `point`) this frame. */
+  digging: false,
   /** Remaining health of damaged deposits by id; untouched deposits have no entry. Never saved. */
   health: new Map<string, number>(),
   /** World position of the visible tool's emitter, written by the tool models every frame. */
@@ -98,6 +100,7 @@ export function resetMining(): void {
   miningRuntime.target = null
   miningRuntime.inRange = false
   miningRuntime.mining = false
+  miningRuntime.digging = false
   miningRuntime.health.clear()
   miningRuntime.shake = 0
   miningRuntime.events.length = 0

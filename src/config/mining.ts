@@ -32,6 +32,12 @@ export const MINING = {
     /** Repeat pickups of the same item within this window add to the existing notice, ms. */
     mergeWindow: 2500,
   },
+  /**
+   * Digging cave walls like dirt: each bite removes a ball of rock this big (meters) and gives this
+   * item. A bite takes `bitePower / tool power` seconds. Rock this close under the surface (meters)
+   * can't be dug, so nobody tunnels up into the open from below.
+   */
+  dig: { radius: 0.9, bitePower: 14, itemId: 'lunar-dust', perBite: 1, minDepth: 2.2 },
   /** Camera shake strength while mining and when a deposit breaks; decay per second. */
   shake: { mining: 0.35, burst: 0.55, decay: 2.4 },
 }

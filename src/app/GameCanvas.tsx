@@ -7,6 +7,9 @@ import { getRegion } from '@/data/regions'
 import { MOON } from '@/data/moon'
 import { getPlanet } from '@/game/planet'
 import { CameraRig } from '@/scene/camera/CameraRig'
+import { CaveSystem } from '@/scene/caves/CaveSystem'
+import { ExplorationSystem } from '@/scene/exploration/ExplorationSystem'
+import { Structures } from '@/scene/exploration/Structures'
 import { Mining } from '@/scene/mining/Mining'
 import { planetTerrainStatus } from '@/scene/planet/terrainStatus'
 import { PlanetWorld } from '@/scene/planet/PlanetWorld'
@@ -38,8 +41,11 @@ export function GameCanvas() {
             <FirstPersonTool />
           </CameraRig>
           <PlanetWorld preset={preset} />
+          <CaveSystem />
           <Mining region={region} particleBudget={preset.particleBudget} />
           {phase !== 'menu' && <Player region={region} planet={planet} />}
+          <Structures />
+          <ExplorationSystem />
         </Physics>
         <SceneReadySignal />
       </Suspense>

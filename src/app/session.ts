@@ -1,6 +1,8 @@
 import { lockPointer, unlockPointer } from '@/input/controls'
 import { loadFromStorage, saveProgress } from '@/save/saveGame'
+import { useCaveStore } from '@/stores/caveStore'
 import { useEconomyStore } from '@/stores/economyStore'
+import { useExplorationStore } from '@/stores/explorationStore'
 import { useGameStore } from '@/stores/gameStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { useMiningStore } from '@/stores/miningStore'
@@ -29,6 +31,8 @@ function resetGameState(): void {
   useEconomyStore.setState(useEconomyStore.getInitialState(), true)
   useMissionStore.setState(useMissionStore.getInitialState(), true)
   useWorldStore.setState(useWorldStore.getInitialState(), true)
+  useExplorationStore.getState().reset()
+  useCaveStore.getState().reset()
   worldRuntime.playTime = 0
   resetSessionState()
 }

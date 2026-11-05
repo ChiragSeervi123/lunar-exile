@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { getDiscoverySites, getPlanet } from '@/game/planet'
+import { useExplorationStore } from '@/stores/explorationStore'
 import { cx } from '@/utils/cx'
 import { MenuButton } from '../components/MenuButton'
 import { moveMenuFocus } from '../components/menuNavigation'
@@ -14,6 +16,8 @@ interface PauseMenuProps {
 export function PauseMenu({ leaving, onResume, onExit }: PauseMenuProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const settings = usePresence(settingsOpen ? true : null, 320)
+  const provinces = useExplorationStore((s) => s.provinces.length)
+  const places = useExplorationStore((s) => s.sites.length)
 
   return (
     <div
@@ -30,6 +34,9 @@ export function PauseMenu({ leaving, onResume, onExit }: PauseMenuProps) {
         <h2 className="mt-4 animate-fade-up font-display text-3xl tracking-[0.3em] text-lunar-50 sm:text-4xl">
           PAUSED
         </h2>
+        <p className="mt-4 animate-fade-up font-ui text-[11px] font-semibold tracking-[0.35em] text-lunar-400">
+          EXPLORED {provinces} / {getPlanet().provinces.length} PROVINCES · {places} / {getDiscoverySites().length} PLACES FOUND
+        </p>
         <nav aria-label="Pause menu" className="mt-10 flex max-w-sm flex-col" onKeyDown={moveMenuFocus}>
           <MenuButton index="01" label="RESUME" onSelect={onResume} delay={60} />
           <MenuButton

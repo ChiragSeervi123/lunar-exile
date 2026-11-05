@@ -56,7 +56,7 @@ export const BUILD_LABEL = 'Milestone 4'
 export const SAVE = {
   storageKey: 'lunar-exile-save',
   /** Bump when SaveData changes shape (and add a migration in save/saveGame.ts). */
-  version: 4,
+  version: 5,
 }
 
 export const ECONOMY = {

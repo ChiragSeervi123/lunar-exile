@@ -38,6 +38,8 @@
   --animate-hud-in: fade-in 1.2s ease-out 2.4s both;
   --animate-hud-out: fade-out 0.5s ease-in both;
   --animate-region-card: region-card 6.5s ease-in-out 2.9s both;
+  /* Banners while playing (a new province, a discovery): the same card, without the arrival's wait. */
+  --animate-place-card: region-card 5s ease-in-out 0.15s both;
   --animate-hints: hints 11s ease-in-out 3.6s both;
   --animate-toast-in: toast-in 0.45s var(--ease-out-expo) both;
   --animate-toast-out: toast-out 0.3s ease-in both;

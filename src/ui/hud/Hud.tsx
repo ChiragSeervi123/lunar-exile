@@ -1,5 +1,6 @@
 import { actionLabel } from '@/config/input'
 import { getRegion } from '@/data/regions'
+import { useExplorationStore } from '@/stores/explorationStore'
 import { useWorldStore } from '@/stores/worldStore'
 import { cx } from '@/utils/cx'
 import { CameraModeIndicator, ControlsHint, LookHint } from './ControlHints'
@@ -23,12 +24,11 @@ function KeyHint({ action, label, className }: { action: 'pause' | 'inventory'; 
 export function Hud({ leaving }: { leaving: boolean }) {
   const region = getRegion(useWorldStore((s) => s.regionId))
   // Where on the Moon the astronaut is now, and where this session began (for the arrival card).
-  const { current, arrival } = useLocation()
+  const { current } = useLocation()
   const placeName = current?.province ?? region.name
   const placeSide = current ? (current.side === 'far' ? 'FAR SIDE' : 'NEAR SIDE') : null
-  const arrivalName = arrival?.province ?? region.name
-  // The landing site keeps its own story; other places describe their kind of landscape.
-  const arrivalText = !arrival || arrival.kind === 'landing-basin' ? region.description : arrival.description
+  // Arriving in a province, or finding one for the first time.
+  const banner = useExplorationStore((s) => s.banner)
 
   return (
     <div
@@ -61,18 +61,24 @@ export function Hud({ leaving }: { leaving: boolean }) {
       {!leaving && <ControlsHint />}
       <LookHint />
 
-      {!leaving && (
-        <div className="absolute inset-x-0 top-[27%] flex animate-region-card flex-col items-center px-6 text-center">
+      {!leaving && banner && (
+        <div
+          key={banner.key}
+          className={cx(
+            'absolute inset-x-0 top-[27%] flex flex-col items-center px-6 text-center',
+            banner.arrival ? 'animate-region-card' : 'animate-place-card',
+          )}
+        >
           <div
             aria-hidden
             className="absolute inset-x-0 -inset-y-12 -z-10 bg-[radial-gradient(closest-side,rgb(2_3_9/0.55),transparent)]"
           />
-          <p className="text-[11px] font-semibold tracking-[0.5em] text-earth-300/80">ENTERING REGION</p>
+          <p className={cx('text-[11px] font-semibold tracking-[0.5em]', banner.discovery ? 'text-amber-300' : 'text-earth-300/80')}>{banner.kicker}</p>
           <h2 className="mt-4 font-display text-2xl tracking-[0.32em] text-lunar-50 [text-shadow:0_0_30px_rgb(0_0_0/0.6)] sm:text-3xl">
-            {arrivalName.toUpperCase()}
+            {banner.title.toUpperCase()}
           </h2>
           <p className="mt-4 max-w-md text-[15px] font-medium tracking-[0.06em] text-lunar-200 [text-shadow:0_0_20px_rgb(0_0_0/0.8)]">
-            {arrivalText}
+            {banner.text}
           </p>
         </div>
       )}

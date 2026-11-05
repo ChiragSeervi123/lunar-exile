@@ -22,4 +22,7 @@ export const planetTerrainStatus = {
   rockColliders: 0,
   /** Ground collision tiles alive around the player. */
   collisionTiles: 0,
+  /** Cave blocks built near the astronaut, and still to build. */
+  caveBlocks: 0,
+  caveQueued: 0,
 }

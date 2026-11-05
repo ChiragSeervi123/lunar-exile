@@ -167,7 +167,7 @@ export function createMiningEffects(particleBudget: number, beamColor: string): 
 
       // Fast attack, quick release, so the beam snaps on and fades out.
       strength = m.mining ? Math.min(1, strength + dt * 12) : Math.max(0, strength - dt * 8)
-      const on = strength > 0.01 && m.target !== null
+      const on = strength > 0.01 && (m.target !== null || m.digging)
       core.visible = on
       glow.visible = on
       contact.visible = on
@@ -185,9 +185,11 @@ export function createMiningEffects(particleBudget: number, beamColor: string): 
         contact.scale.setScalar((0.35 + 0.15 * flicker) * strength)
         light.position.copy(point).addScaledVector(beam, -0.3)
 
-        if (m.mining && m.target) {
-          const resource = getResource(m.target.resourceId)
-          resourceColor.set(resource ? (getItem(resource.itemId)?.color ?? resource.appearance.color) : '#ffffff')
+        if (m.mining && (m.target || m.digging)) {
+          // A deposit throws its own colour; dug rock throws grey regolith.
+          const resource = m.target ? getResource(m.target.resourceId) : undefined
+          if (resource) resourceColor.set(getItem(resource.itemId)?.color ?? resource.appearance.color)
+          else resourceColor.copy(REGOLITH)
           sparkDebt += SPARK_RATE * dt
           while (sparkDebt >= 1) {
             sparkDebt -= 1

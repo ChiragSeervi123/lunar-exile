@@ -5,7 +5,7 @@ import { useMemo, useRef, type ReactNode } from 'react'
 import { Vector3, type PerspectiveCamera as PerspectiveCameraImpl } from 'three'
 import { CAMERA } from '@/config/camera'
 import { COLLISION, FRAME_PRIORITY } from '@/config/game'
-import type { Planet } from '@/game/planet'
+import { getCaveQueries, type Planet } from '@/game/planet'
 import { wrapAngle, type CameraMode } from '@/game/player'
 import { inputState } from '@/input/inputState'
 import { useGameStore } from '@/stores/gameStore'
@@ -105,6 +105,8 @@ export function CameraRig({ region, planet, children }: CameraRigProps) {
     }
 
     const following = mode !== 'menu' && playerRuntime.active
+    // In a cave the ground is overhead: nothing should push the camera up through it.
+    const underground = following && getCaveQueries().underground(playerRuntime.renderPosition, 0.3) !== null
     if (following) {
       const limits = mode === 'first-person' ? CAMERA.firstPerson : CAMERA.thirdPerson
       const turn = CAMERA.mouseRadiansPerPixel * useSettingsStore.getState().mouseSensitivity
@@ -125,7 +127,7 @@ export function CameraRig({ region, planet, children }: CameraRigProps) {
       goal.position.copy(camera.position)
       goal.target.copy(r.look)
     } else if (mode === 'third-person') {
-      thirdPersonPose(r.follow, playerRuntime.renderPosition, playerRuntime.renderFrame, cameraRuntime.yaw, cameraRuntime.pitch, dt, cast, planet, goal)
+      thirdPersonPose(r.follow, playerRuntime.renderPosition, playerRuntime.renderFrame, cameraRuntime.yaw, cameraRuntime.pitch, dt, cast, planet, goal, underground)
     } else firstPersonPose(playerRuntime.renderPosition, playerRuntime.renderFrame, cameraRuntime.yaw, cameraRuntime.pitch, goal)
 
     let fov = CAMERA.fov[mode]
@@ -149,7 +151,7 @@ export function CameraRig({ region, planet, children }: CameraRigProps) {
 
     // Never dip into the ground, including mid-blend (first person is already at eye height).
     if (mode !== 'first-person' || r.transitioning) {
-      keepAboveGround(planet, camera.position, mode === 'menu' ? CAMERA.groundClearance : CAMERA.thirdPerson.groundClearance)
+      if (!underground) keepAboveGround(planet, camera.position, mode === 'menu' ? CAMERA.groundClearance : CAMERA.thirdPerson.groundClearance)
     }
     // The horizon stays level: the camera's up is the local vertical.
     camera.up.copy(camera.position).normalize()

@@ -9,7 +9,7 @@ import { dot, multiplyQuat, quat, quatFromEulerXZY, vec3, type Vec3 } from '@/ut
 import { nodeArea } from './cells'
 import { faceDirection, gridParam, nodeKey, type CubeNode } from './cubeSphere'
 import { chartCoordinates, createFrame, frameFacing, frameRotation, toLocal, type ChartPoint } from './frame'
-import { ROCK_CELL_DEPTH, type PlanetRock, type PlanetRockField } from './rocks'
+import { ROCK_CELL_DEPTH, type ClearZone, type PlanetRock, type PlanetRockField } from './rocks'
 import { createPlanetSample, type Planet } from './sampler'
 
 /** Deposits are generated per node at this depth (about 86 m across), like rocks. */
@@ -47,7 +47,7 @@ const CACHE_SIZE = 2048
  * rare types grow likelier the farther from the landing site. Deposits keep clear of rocks, steep
  * ground and each other. The landing site keeps the deposits of Milestone 3.
  */
-export function createPlanetDepositField(planet: Planet, rocks: PlanetRockField): PlanetDepositField {
+export function createPlanetDepositField(planet: Planet, rocks: PlanetRockField, clear: readonly ClearZone[] = []): PlanetDepositField {
   const R = planet.radius
   const flat = planet.landing.terrain
   const landingHalf = flat.playableHalfSize
@@ -151,6 +151,7 @@ export function createPlanetDepositField(planet: Planet, rocks: PlanetRockField)
         const luck = rng()
 
         faceDirection(face, s, t, dir)
+        if (clear.some((z) => dot(z.dir, dir) > Math.cos(z.radius / R))) continue
         if (dir.y > nearLanding) {
           chartCoordinates(dir, R, chart)
           if (Math.abs(chart.x) <= landingHalf && Math.abs(chart.z) <= landingHalf) continue

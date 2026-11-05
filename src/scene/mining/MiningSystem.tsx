@@ -19,15 +19,19 @@ import {
   type Deposit,
   type RegionDeposits,
 } from '@/game/mining'
+import { getPlanet, toCaveLocal, type Cave } from '@/game/planet'
 import { inputState, isHeld } from '@/input/inputState'
 import { saveProgress } from '@/save/saveGame'
+import { useCaveStore } from '@/stores/caveStore'
 import { useGameStore } from '@/stores/gameStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { describesTarget, useMiningStore, type TargetKind } from '@/stores/miningStore'
 import { useNotificationStore } from '@/stores/notificationStore'
 import { cameraRuntime, miningRuntime, playerRuntime, worldRuntime } from '@/stores/runtime'
 import { useWorldStore } from '@/stores/worldStore'
+import { vec3 } from '@/utils/vec3'
 import { viewDirection } from '../camera/follow'
+import { caveRuntime } from '../caves/caveRuntime'
 import { depositTargets } from './depositTargets'
 
 type Ray = InstanceType<RapierContext['rapier']['Ray']>
@@ -90,7 +94,20 @@ function regrowDeposits(deposits: RegionDeposits): void {
  */
 export function MiningSystem({ deposits }: { deposits: RegionDeposits }) {
   const { world, rapier } = useRapier()
-  const scratch = useRef({ ray: null as Ray | null, dir: new Vector3(), chest: new Vector3(), chipIn: 0, regrowIn: 0, beam: false })
+  const scratch = useRef({
+    ray: null as Ray | null,
+    dir: new Vector3(),
+    chest: new Vector3(),
+    wallPoint: new Vector3(),
+    bite: new Vector3(),
+    biteDir: new Vector3(),
+    local: vec3(),
+    chipIn: 0,
+    biteIn: 0,
+    regrowIn: 0,
+    beam: false,
+  })
+  const planet = getPlanet()
 
   // Never leave the beam humming if the system goes away mid-cut.
   useEffect(() => () => setBeamSound(false), [])
@@ -114,6 +131,7 @@ export function MiningSystem({ deposits }: { deposits: RegionDeposits }) {
     let target: Deposit | null = null
     let kind: TargetKind = 'deposit'
     let mining = false
+    let wall: { cave: Cave; deepEnough: boolean } | null = null
     const tool = getTool(useInventoryStore.getState().equipment.tool)
     if (phase === 'playing' && playerRuntime.active) {
       const feet = playerRuntime.renderPosition
@@ -153,10 +171,56 @@ export function MiningSystem({ deposits }: { deposits: RegionDeposits }) {
           }
         }
       }
+      // No deposit in sight: a cave wall within reach can be dug like dirt.
+      const caves = caveRuntime.streamer
+      if (!target && tool && caves) {
+        const rock = world.castRay(ray, tool.range + MINING.aimStartBehind + 2, true, undefined, COLLISION.sightQuery, undefined, undefined, (c) => caves.caveOf(c) !== undefined)
+        const cave = rock ? caves.caveOf(rock.collider) : undefined
+        if (rock && cave) {
+          const toi = rock.timeOfImpact
+          s.wallPoint.set(ray.origin.x + dir.x * toi, ray.origin.y + dir.y * toi, ray.origin.z + dir.z * toi)
+          const distance = s.wallPoint.distanceTo(chest)
+          if (distance <= tool.range) {
+            // The bite goes a little into the rock, so the wall moves back as it is dug.
+            s.bite.copy(s.wallPoint).addScaledVector(dir, MINING.dig.radius * 0.4)
+            const r = s.bite.length()
+            s.biteDir.copy(s.bite).divideScalar(r)
+            const deepEnough = planet.surfaceRadius(s.biteDir) - r >= MINING.dig.minDepth
+            wall = { cave, deepEnough }
+            m.point.x = s.wallPoint.x
+            m.point.y = s.wallPoint.y
+            m.point.z = s.wallPoint.z
+            m.distance = distance
+          }
+        }
+      }
     }
     m.target = target
     m.targetKind = kind
     m.inRange = target !== null && tool !== undefined && m.distance <= tool.range
+
+    // Digging: a bite out of the wall every so often while the button is held.
+    let digging = false
+    if (wall && tool && isHeld('mine') && wall.deepEnough) {
+      digging = true
+      mining = true
+      m.shake = Math.max(m.shake, MINING.shake.mining * 0.7)
+      s.biteIn -= dt
+      if (s.biteIn <= 0) {
+        s.biteIn = MINING.dig.bitePower / tool.power
+        const l = toCaveLocal(wall.cave, s.bite, s.local)
+        useCaveStore.getState().dig(wall.cave.id, l.x, l.y, l.z, MINING.dig.radius)
+        playSound('mineChip')
+        const { itemId, perBite } = MINING.dig
+        const taken = Math.min(perBite, spaceFor(useInventoryStore.getState().stacks, itemId))
+        const notify = useNotificationStore.getState().notify
+        if (taken > 0) {
+          useInventoryStore.getState().addItem(itemId, taken)
+          notify('gain', itemId, taken)
+        } else notify('full', itemId, perBite)
+      }
+    } else s.biteIn = 0
+    m.digging = digging
 
     const resource = target ? getResource(target.resourceId) : undefined
     if (target && resource && tool && m.inRange) {
@@ -183,10 +247,12 @@ export function MiningSystem({ deposits }: { deposits: RegionDeposits }) {
     // Tell the HUD, only when something it shows has changed.
     const full = resource ? spaceFor(useInventoryStore.getState().stacks, resource.itemId) === 0 : false
     const status = useMiningStore.getState()
-    if (!describesTarget(status.target, target?.id ?? null, kind, m.inRange, full) || status.mining !== mining) {
+    const wallStatus = wall ? (wall.deepEnough ? 'dig' : 'shallow') : null
+    if (!describesTarget(status.target, target?.id ?? null, kind, m.inRange, full) || status.mining !== mining || status.wall !== wallStatus) {
       useMiningStore.setState({
-        target: target ? { depositId: target.id, kind, resourceId: target.resourceId, inRange: m.inRange, full } : null,
+        target: target ? { depositId: target.id, kind, resourceId: target.resourceId, maxHealth: target.maxHealth, inRange: m.inRange, full } : null,
         mining,
+        wall: wallStatus,
       })
     }
   }, FRAME_PRIORITY.interaction)

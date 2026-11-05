@@ -2,7 +2,7 @@ import type { RapierCollider, RapierContext, RapierRigidBody } from '@react-thre
 import { COLLISION } from '@/config/game'
 import { PLANET_PHYSICS } from '@/config/planet'
 import { PLAYER_CONTROLLER as TUNING } from '@/config/player'
-import { copyFrame, createFrame, frameRotation, toLocal, toWorld, transportFrame, type Frame, type Planet } from '@/game/planet'
+import { copyFrame, createFrame, frameRotation, toLocal, toWorld, transportFrame, type CaveQueries, type Frame, type Planet } from '@/game/planet'
 import { resolveMotor, slideAlongWall, updateMotor, type MotorInput, type MotorState } from '@/game/player'
 import { DEG2RAD } from '@/utils/math'
 import { dot, length, normalize, quat, setVec, vec3, type Vec3 } from '@/utils/vec3'
@@ -38,11 +38,13 @@ export interface PlanetSpawn {
  * query is made, because colliders built for the spawn only reach the physics world at its next
  * step; the controller holds the body still until then.
  */
-export function findPlanetSpawn(planet: Planet, saved: PlanetPose | null, defaultFacing: number): PlanetSpawn {
+export function findPlanetSpawn(planet: Planet, saved: PlanetPose | null, defaultFacing: number, caves: CaveQueries | null = null): PlanetSpawn {
   const position = saved?.position ?? planet.spawn.position
   const up = normalize(vec3(), position)
   const ground = planet.surfaceRadius(up)
-  const r = Math.max(length(position), ground - PLANET_PHYSICS.sinkRecovery) + TUNING.skin
+  // In a cave, the saved spot is under the ground on purpose.
+  const underground = caves !== null && caves.underground(position, 0.2) !== null
+  const r = (underground ? length(position) : Math.max(length(position), ground - PLANET_PHYSICS.sinkRecovery)) + TUNING.skin
   const frame = transportFrame(copyFrame(createFrame(), planet.spawn.frame), up)
   const facing = saved ? Math.atan2(dot(saved.forward, frame.east), dot(saved.forward, frame.north)) : defaultFacing
   const c = r + BODY_CENTER
@@ -70,9 +72,9 @@ export interface PlanetController {
  * along the ground by parallel transport, so headings stay continuous everywhere and there are no
  * poles or edges. Gravity pulls toward the Moon's centre; Rapier's character controller handles
  * walls, slopes, steps and snapping with its "up" set to the local vertical every step, and the
- * exact ground is a safety net against tunnelling. There are no boundaries.
+ * exact ground is a safety net against tunnelling, except inside `caves`. There are no boundaries.
  */
-export function createPlanetController(world: World, planet: Planet, queryFlags: number): PlanetController {
+export function createPlanetController(world: World, planet: Planet, queryFlags: number, caves: CaveQueries | null = null): PlanetController {
   const controller = world.createCharacterController(TUNING.skin)
   controller.setMaxSlopeClimbAngle(TUNING.maxClimbAngle * DEG2RAD)
   controller.setMinSlopeSlideAngle(TUNING.slideAngle * DEG2RAD)
@@ -90,6 +92,7 @@ export function createPlanetController(world: World, planet: Planet, queryFlags:
   const up = vec3()
   const rotation = quat()
   const next = vec3()
+  const feetPoint = vec3()
   const stats = { rescues: 0 }
   let hold = settleSteps
 
@@ -140,9 +143,12 @@ export function createPlanetController(world: World, planet: Planet, queryFlags:
       let z = from.z + mz
       let r = Math.hypot(x, y, z)
       setVec(up, x / r, y / r, z / r)
-      // Safety net from the exact ground: lift the body back out if it ever tunnels through.
+      // Safety net from the exact ground: lift the body back out if it ever tunnels through. In a
+      // cave the body is meant to be under the ground: its rock colliders are all there is.
       const ground = planet.surfaceRadius(up)
-      if (r - BODY_CENTER < ground - sinkRecovery) {
+      setVec(feetPoint, x - up.x * BODY_CENTER, y - up.y * BODY_CENTER, z - up.z * BODY_CENTER)
+      const inCave = r - BODY_CENTER < ground - 0.2 && caves !== null && caves.underground(feetPoint, 0.2) !== null
+      if (!inCave && r - BODY_CENTER < ground - sinkRecovery) {
         stats.rescues++
         r = ground + BODY_CENTER
         x = up.x * r
@@ -150,7 +156,7 @@ export function createPlanetController(world: World, planet: Planet, queryFlags:
         z = up.z * r
       }
       toLocal(frame, setVec(moved, x - from.x, y - from.y, z - from.z), movedLocal)
-      const touching = controller.computedGrounded() || r - BODY_CENTER - ground < groundProbe
+      const touching = controller.computedGrounded() || (!inCave && r - BODY_CENTER - ground < groundProbe)
       const impact = resolveMotor(motor, !jumped && v.y <= 0 && touching, movedLocal, desiredLocal, dt)
       transportFrame(frame, up)
       body.setNextKinematicTranslation(setVec(next, x, y, z))

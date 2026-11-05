@@ -12,7 +12,7 @@ import { Vector3, type Group } from 'three'
 import { CAMERA } from '@/config/camera'
 import { COLLISION, FRAME_PRIORITY } from '@/config/game'
 import { PLAYER_CONTROLLER } from '@/config/player'
-import { copyFrame, frameDirection, frameRotation, transportFrame, type Planet } from '@/game/planet'
+import { copyFrame, frameDirection, frameRotation, getCaveQueries, transportFrame, type Planet } from '@/game/planet'
 import { createMotorInput, createMotorState, defaultFacing, type MotorState, type PlayerPose } from '@/game/player'
 import { axis, inputState, isHeld } from '@/input/inputState'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -57,7 +57,7 @@ export function Player({ region, planet }: PlayerProps) {
   const body = useRef<RapierRigidBody>(null)
   const collider = useRef<RapierCollider>(null)
   const visual = useRef<Group>(null)
-  const [spawn] = useState(() => findPlanetSpawn(planet, toPose(usePlayerStore.getState().spawnPoint), defaultFacing(region)))
+  const [spawn] = useState(() => findPlanetSpawn(planet, toPose(usePlayerStore.getState().spawnPoint), defaultFacing(region), getCaveQueries()))
   const [rotation] = useState(() => {
     const q = frameRotation(spawn.frame, quat())
     return [q.x, q.y, q.z, q.w] as [number, number, number, number]
@@ -73,7 +73,7 @@ export function Player({ region, planet }: PlayerProps) {
     const builder = typeof Worker === 'undefined' ? null : createChunkBuilder(planet, COLLISION_TILE_OPTIONS, 1, 2)
     const terrain = createTerrainColliders(world, rapier, planet, builder)
     terrain.ensure(spawn.feet)
-    const controller = createPlanetController(world, planet, rapier.QueryFilterFlags.EXCLUDE_SENSORS)
+    const controller = createPlanetController(world, planet, rapier.QueryFilterFlags.EXCLUDE_SENSORS, getCaveQueries())
     sim.current = { controller, terrain, motor: createMotorState(spawn.facing) }
     const b = body.current
     if (b) {
@@ -107,7 +107,7 @@ export function Player({ region, planet }: PlayerProps) {
       const forward = frameDirection(frame, s.motor.facing, 0, scratch.current.forward)
       // Keep the camera looking the same way, measured in the new frame.
       const view = frameDirection(frame, cameraRuntime.yaw, 0, scratch.current.view)
-      const spot = findPlanetSpawn(planet, { position: warp, forward }, 0)
+      const spot = findPlanetSpawn(planet, { position: warp, forward }, 0, getCaveQueries())
       cameraRuntime.yaw = Math.atan2(dot(view, spot.frame.east), dot(view, spot.frame.north))
       s.terrain.ensure(spot.feet)
       const q = frameRotation(spot.frame, scratch.current.rotation)

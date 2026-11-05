@@ -12,7 +12,7 @@ import type { RegionDef } from '@/types/content'
 import { clamp, smoothstep } from '@/utils/math'
 import { createSmoothNoise3D } from '@/utils/noise'
 import { createRng, deriveSeed } from '@/utils/random'
-import { multiplyQuat, quat, quatFromEulerXZY, vec3, type Quat } from '@/utils/vec3'
+import { dot, multiplyQuat, quat, quatFromEulerXZY, vec3, type Quat, type Vec3 } from '@/utils/vec3'
 import { nodeArea } from './cells'
 import { faceDirection, gridParam, type CubeNode } from './cubeSphere'
 import { chartCoordinates, chartDirection, chartRotation, createFrame, frameFacing, frameRotation, toLocal, type ChartPoint } from './frame'
@@ -56,13 +56,19 @@ export interface PlanetRockField {
   cell(node: CubeNode, cls: RockClass, debrisDensity: number): PlanetRock[]
 }
 
+/** A place nothing is scattered on: a unit direction and a radius along the ground, meters. */
+export interface ClearZone {
+  dir: Vec3
+  radius: number
+}
+
 /**
  * Rocks for the whole Moon. Around the landing site they come from the flat map, so the rocks of
  * Milestones 1–3 (and the deposits placed around them) stay where they were; everywhere else they
  * gather the same way, in patches, on crater rims and in fresh ejecta, in proportion to each
- * province's rockiness.
+ * province's rockiness, and keep off `clear` zones (cave mouths, structures).
  */
-export function createPlanetRockField(planet: Planet, region: RegionDef): PlanetRockField {
+export function createPlanetRockField(planet: Planet, region: RegionDef, clear: readonly ClearZone[] = []): PlanetRockField {
   const R = planet.radius
   const flat = planet.landing.terrain
   const patches = createSmoothNoise3D(createRng(deriveSeed(planet.seed, 'rock-patches')))
@@ -156,6 +162,7 @@ export function createPlanetRockField(planet: Planet, region: RegionDef): Planet
 
         faceDirection(node.face, s, t, dir)
         if (inLandingField(cls)) continue
+        if (clear.some((z) => dot(z.dir, dir) > Math.cos(z.radius / R))) continue
         planet.sample(dir, sample)
         const patch = smoothstep(-0.35, 0.6, patches((dir.x * R) / 70, (dir.y * R) / 70, (dir.z * R) / 70))
         const accept = clamp(0.2 + 0.55 * patch + 0.5 * sample.craterRim + 0.6 * sample.ejecta, 0, 1) * (Math.min(sample.rocks, MAX_DENSITY) / MAX_DENSITY)

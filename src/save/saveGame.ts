@@ -5,7 +5,9 @@ import { sanitizeEquipment, sanitizeStacks } from '@/game/inventory'
 import { sanitizeSites, type DepositSites } from '@/game/mining'
 import { chartDirection, chartRotation, frameDirection, getPlanet } from '@/game/planet'
 import type { PlayerPose } from '@/game/player'
+import { useCaveStore } from '@/stores/caveStore'
 import { useEconomyStore } from '@/stores/economyStore'
+import { useExplorationStore } from '@/stores/explorationStore'
 import { useGameStore } from '@/stores/gameStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { useMissionStore } from '@/stores/missionStore'
@@ -36,6 +38,10 @@ export interface SaveData {
   missions: Pick<ReturnType<typeof useMissionStore.getState>, 'active' | 'completedIds'>
   /** Mining progress in the current region, on the save's own play clock. */
   world: { playTime: number } & DepositSites
+  /** Provinces visited and places found (craters, structures, caves), by id. */
+  exploration: { provinces: string[]; sites: string[] }
+  /** Rock dug out underground: per cave, [x, y, z, radius] spheres in the cave's own frame. */
+  caves: Record<string, number[]>
 }
 
 const forward = vec3()
@@ -61,6 +67,8 @@ export function createSave(): SaveData {
     economy: { credits, upgradeLevels, ownedShips },
     missions: { active, completedIds },
     world: { playTime: worldRuntime.playTime, depleted: sites.depleted, drops: sites.drops },
+    exploration: { provinces: useExplorationStore.getState().provinces, sites: useExplorationStore.getState().sites },
+    caves: useCaveStore.getState().digs,
   }
 }
 
@@ -72,6 +80,8 @@ export function applySave(data: SaveData): void {
   useInventoryStore.setState(data.inventory)
   useEconomyStore.setState(data.economy)
   useMissionStore.setState(data.missions)
+  useExplorationStore.setState({ provinces: data.exploration.provinces, sites: data.exploration.sites, banner: null })
+  useCaveStore.setState({ digs: data.caves })
 }
 
 /** Returns false when storage is unavailable (e.g. blocked or full). */
@@ -172,6 +182,8 @@ export function migrate(raw: unknown): SaveData | null {
   if (data.version === 2) data = { ...data, version: 3, world: { playTime: 0, depleted: {}, drops: {} } }
   // Version 3 played on the flat landing-site map: carry the astronaut onto the Moon through it.
   if (data.version === 3) data = { ...data, version: 4, player: migrateFlatPlayer(data.player) }
+  // Version 4 predates exploration and caves: nothing found or dug yet.
+  if (data.version === 4) data = { ...data, version: 5, exploration: { provinces: [], sites: [] }, caves: {} }
   if (data.version !== SAVE.version) return null
 
   const world = isRecord(data.world) ? data.world : {}
@@ -187,7 +199,32 @@ export function migrate(raw: unknown): SaveData | null {
     economy: sanitizeEconomy(data.economy),
     missions: sanitizeMissions(data.missions),
     world: { playTime, ...sanitizeSites(world, playTime) },
+    exploration: sanitizeExploration(data.exploration),
+    caves: sanitizeCaves(data.caves),
   }
+}
+
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? [...new Set(value.filter((v): v is string => typeof v === 'string'))] : []
+
+function sanitizeExploration(raw: unknown): SaveData['exploration'] {
+  const source = isRecord(raw) ? raw : {}
+  return { provinces: strings(source.provinces), sites: strings(source.sites) }
+}
+
+/** Dig lists of whole [x, y, z, radius] groups with finite numbers and sensible radii. */
+function sanitizeCaves(raw: unknown): SaveData['caves'] {
+  const caves: SaveData['caves'] = {}
+  for (const [id, list] of Object.entries(isRecord(raw) ? raw : {})) {
+    if (!Array.isArray(list)) continue
+    const kept: number[] = []
+    for (let i = 0; i + 3 < list.length; i += 4) {
+      const group = list.slice(i, i + 4)
+      if (group.every((v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 500) && group[3] > 0 && group[3] < 3) kept.push(...group)
+    }
+    if (kept.length > 0) caves[id] = kept
+  }
+  return caves
 }
 
 /** The stored save, or null when it is missing, unreadable, or from an unknown save version. */

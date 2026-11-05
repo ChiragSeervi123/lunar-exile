@@ -5,7 +5,7 @@ import { FRAME_PRIORITY } from '@/config/game'
 import { PLANET_DEPOSITS } from '@/config/planet'
 import { getTool } from '@/data/tools'
 import type { Deposit, RegionDeposits } from '@/game/mining'
-import { getLandingDeposits, getPlanetDeposits } from '@/game/planet'
+import { getCaveDeposits, getCaveQueries, getLandingDeposits, getPlanetDeposits } from '@/game/planet'
 import { useGameStore } from '@/stores/gameStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { playerRuntime } from '@/stores/runtime'
@@ -43,7 +43,12 @@ export function Mining({ region, particleBudget }: MiningProps) {
 
 /** The live deposits, updated as the astronaut (or, in the menu, the camera) moves. */
 function useActiveDeposits(): RegionDeposits {
-  const [streamer] = useState(() => createDepositStreamer(getLandingDeposits(), getPlanetDeposits(), PLANET_DEPOSITS.activeRadius))
+  const [streamer] = useState(() =>
+    createDepositStreamer(getLandingDeposits(), getPlanetDeposits(), PLANET_DEPOSITS.activeRadius, {
+      near: (center, radius) => getCaveQueries().near(center, radius),
+      deposits: getCaveDeposits,
+    }),
+  )
   const [active, setActive] = useState(() => streamer.active)
   useFrame(({ camera }) => {
     const next = streamer.update(playerRuntime.active ? playerRuntime.position : camera.position)

@@ -1,4 +1,4 @@
-import { createPlanetSample, faceDirection, gridParam, nodeKey, nodeSize, type CubeNode, type Planet } from '@/game/planet'
+import { createCaveQueries, createPlanetSample, faceDirection, gridParam, nodeKey, nodeSize, type CaveQueries, type CubeNode, type Planet } from '@/game/planet'
 import { smoothstep } from '@/utils/math'
 import { vec3 } from '@/utils/vec3'
 
@@ -237,9 +237,18 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
     })
   }
 
+  // Cave mouths: ground opening into a cave's tunnels is left out (detailed chunks only; from far
+  // away a hole couldn't be seen), so the astronaut can walk in and see down.
+  const open = holes(planet, cx, cy, cz, Math.sqrt(radius2), spacing, wx, wy, wz, g, res)
   const indexCount = res * res * 6 + skirtCount * 6
-  const indices = vertexCount < 65536 ? new Uint16Array(indexCount) : new Uint32Array(indexCount)
+  const full = vertexCount < 65536 ? new Uint16Array(indexCount) : new Uint32Array(indexCount)
   let w = 0
+  const triangle = (a: number, b: number, c: number) => {
+    if (open && (open[a] || open[b] || open[c])) return
+    full[w++] = a
+    full[w++] = b
+    full[w++] = c
+  }
   for (let j = 0; j < res; j++) {
     for (let i = 0; i < res; i++) {
       const a = j * n + i
@@ -248,22 +257,15 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
       const d = c + 1
       // Counter-clockwise seen from outside (u right, v up); the diagonal varies per quad.
       if (hash(seed, face, depth, ix * res + i, iy * res + j, SALT_DIAGONAL) < 0.5) {
-        indices[w++] = a
-        indices[w++] = b
-        indices[w++] = d
-        indices[w++] = a
-        indices[w++] = d
-        indices[w++] = c
+        triangle(a, b, d)
+        triangle(a, d, c)
       } else {
-        indices[w++] = a
-        indices[w++] = b
-        indices[w++] = c
-        indices[w++] = b
-        indices[w++] = d
-        indices[w++] = c
+        triangle(a, b, c)
+        triangle(b, d, c)
       }
     }
   }
+  const indices = full
   // Edges were listed counter-clockwise around the chunk, so outward is always to the right.
   for (let e = 0; e < skirtCount; e++) {
     const p0 = n * n + e
@@ -286,10 +288,39 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
     normals,
     colors,
     skirt,
-    indices,
+    indices: w < indices.length ? indices.slice(0, w) : indices,
     radius: Math.sqrt(radius2),
     minHeight,
     maxHeight,
     buildMs: performance.now() - started,
   }
+}
+
+/** Finest spacing at which cave mouths are cut, meters (coarser chunks are too far away to show them). */
+const HOLE_SPACING = 3
+const queriesByPlanet = new WeakMap<Planet, CaveQueries>()
+
+/** Per ground vertex: open to a cave below. Null when the chunk has no cave mouth in it. */
+function holes(planet: Planet, cx: number, cy: number, cz: number, radius: number, spacing: number, wx: Float64Array, wy: Float64Array, wz: Float64Array, g: number, res: number): Uint8Array | null {
+  if (spacing > HOLE_SPACING || planet.caves.length === 0) return null
+  let queries = queriesByPlanet.get(planet)
+  if (!queries) queriesByPlanet.set(planet, (queries = createCaveQueries(planet)))
+  if (queries.near(vec3(cx, cy, cz), radius).length === 0) return null
+  const n = res + 1
+  const open = new Uint8Array(n * n)
+  const p = vec3()
+  let any = false
+  for (let j = 0; j <= res; j++) {
+    for (let i = 0; i <= res; i++) {
+      const k = (j + 1) * g + (i + 1)
+      p.x = wx[k]
+      p.y = wy[k]
+      p.z = wz[k]
+      if (queries.opensAt(p)) {
+        open[j * n + i] = 1
+        any = true
+      }
+    }
+  }
+  return any ? open : null
 }

@@ -6,6 +6,7 @@ import { createRng, deriveSeed, randRange } from '@/utils/random'
 import { cross, dot, normalize, setVec, vec3, type Vec3 } from '@/utils/vec3'
 import { createSphereCrater, createSphereCraterField, type SphereCrater } from './craters'
 import { chartCoordinates, createFrame, type ChartPoint, type Frame } from './frame'
+import { createCaves, type Cave } from './caves'
 import { createBlend, createProvinceField, type Province } from './provinces'
 
 export interface PlanetSample extends TerrainSample {
@@ -46,6 +47,10 @@ export interface Planet {
   /** Unit ground normal at a unit direction. */
   normalAt(dir: Vec3, out: Vec3): Vec3
   provinceAt(dir: Vec3): Province
+  /** The big named craters: the giant far-side basin first, then the landmark craters (centre direction, radius in meters). */
+  landmarks: readonly { dir: Vec3; radius: number }[]
+  /** Cave networks under the surface, one per province (see caves.ts). */
+  caves: readonly Cave[]
   /** Arrival point on the ground, and the landing site's frame (identical to the flat map's axes). */
   spawn: { position: Vec3; frame: Frame }
   /** Unit directions toward the sun and Earth, fixed in space. */
@@ -243,6 +248,7 @@ export function createPlanet(moon: MoonDef, landingRegion: RegionDef, landingReg
   }
 
   const spawnDir = vec3(0, 1, 0)
+  const caves = createCaves(seed, { radius: R, surfaceRadius: (d) => R + heightAt(d), normalAt }, provinces.provinces)
   return {
     radius: R,
     seed,
@@ -255,6 +261,8 @@ export function createPlanet(moon: MoonDef, landingRegion: RegionDef, landingReg
     surfaceRadius: (dir, spacing = 0) => R + heightAt(dir, spacing),
     normalAt,
     provinceAt: (dir) => (Math.acos(clamp(dir.y, -1, 1)) * R < (CHART_PURE + CHART_BLEND) / 2 ? provinces.provinces[landingIndex] : provinces.at(dir)),
+    landmarks: spots.map((s) => ({ dir: s.dir, radius: s.radius })),
+    caves,
     spawn: { position: vec3(0, R + heightAt(spawnDir), 0), frame: createFrame() },
     sunDirection,
     earthDirection,

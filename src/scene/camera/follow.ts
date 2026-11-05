@@ -59,6 +59,8 @@ export function thirdPersonPose(
   cast: ProbeCast,
   planet: Planet,
   out: CameraPose,
+  /** The astronaut is in a cave: the walls (colliders) hold the camera in, not the ground above. */
+  underground = false,
 ): CameraPose {
   const c = CAMERA.thirdPerson
   const up = frame.up
@@ -95,7 +97,7 @@ export function thirdPersonPose(
 
   out.position.copy(state.pivot).addScaledVector(boom, state.distance)
   // Colliders exist only around the astronaut, so also keep above the exact ground.
-  keepAboveGround(planet, out.position, c.groundClearance)
+  if (!underground) keepAboveGround(planet, out.position, c.groundClearance)
   out.target.copy(out.position).addScaledVector(view, 10)
   return out
 }

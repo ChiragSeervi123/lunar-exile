@@ -14,16 +14,29 @@ export interface DepositStreamer {
   readonly active: RegionDeposits
 }
 
+/** Caves around a point, and each cave's deposits (on its floors, underground). */
+export interface CaveDepositSource {
+  near(center: Vec3, radius: number): readonly { id: string }[]
+  deposits(caveId: string): readonly Deposit[]
+}
+
 /**
- * Which deposits are live: the landing site's always (it is small), and the Moon's in the cells
- * around the astronaut. New cells are generated a few per frame within a time budget, and the set
- * only switches once they are all ready, so walking never stalls and nothing pops in near by.
+ * Which deposits are live: the landing site's always (it is small), the Moon's in the cells around
+ * the astronaut, and those in nearby caves. New cells are generated a few per frame within a time
+ * budget, and the set only switches once they are all ready, so walking never stalls and nothing
+ * pops in near by.
  */
-export function createDepositStreamer(landing: RegionDeposits, field: PlanetDepositField, radius: number): DepositStreamer {
+export function createDepositStreamer(
+  landing: RegionDeposits,
+  field: PlanetDepositField,
+  radius: number,
+  caves: CaveDepositSource | null = null,
+): DepositStreamer {
   const { updateDistance, budgetMs } = PLANET_DEPOSITS
   const dir = vec3()
   const last = vec3(Number.NaN, Number.NaN, Number.NaN)
   let wanted: { key: number; node: CubeNode }[] = []
+  let caveIds: string[] = []
   const ready = new Map<number, readonly Deposit[]>()
   let shownKeys = ''
   let active: RegionDeposits = landing
@@ -43,6 +56,7 @@ export function createDepositStreamer(landing: RegionDeposits, field: PlanetDepo
         nodesWithin(dir, radius / R, DEPOSIT_CELL_DEPTH, (n) => {
           wanted.push({ key: nodeKey(n.face, n.depth, n.ix, n.iy), node: { ...n } })
         })
+        caveIds = caves ? caves.near(center, radius).map((c) => c.id).sort() : []
         // Forget cells no longer wanted (the generator keeps its own cache).
         const keep = new Set(wanted.map((w) => w.key))
         for (const key of ready.keys()) if (!keep.has(key)) ready.delete(key)
@@ -53,13 +67,14 @@ export function createDepositStreamer(landing: RegionDeposits, field: PlanetDepo
         if (performance.now() - started > budgetMs) return null
         ready.set(w.key, field.cell(w.node))
       }
-      const keys = wanted
+      const cells = wanted
         .map((w) => w.key)
         .sort((a, b) => a - b)
         .join(',')
+      const keys = `${cells}|${caveIds.join(',')}`
       if (keys === shownKeys) return null
       shownKeys = keys
-      const list = [...landing.list, ...wanted.flatMap((w) => ready.get(w.key)!)]
+      const list = [...landing.list, ...wanted.flatMap((w) => ready.get(w.key)!), ...caveIds.flatMap((id) => caves!.deposits(id))]
       active = { list, byId: new Map(list.map((d) => [d.id, d])) }
       return active
     },

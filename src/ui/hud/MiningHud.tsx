@@ -4,7 +4,6 @@ import { getItem } from '@/data/items'
 import { RARITIES } from '@/data/rarities'
 import { getResource } from '@/data/resources'
 import { getTool } from '@/data/tools'
-import { getRegionDeposits } from '@/game/mining'
 import { useGameStore } from '@/stores/gameStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { useMiningStore, type TargetInfo } from '@/stores/miningStore'
@@ -30,12 +29,34 @@ export function MiningHud() {
   const playing = useGameStore((s) => s.phase === 'playing')
   const target = useMiningStore((s) => s.target)
   const mining = useMiningStore((s) => s.mining)
+  const wall = useMiningStore((s) => s.wall)
   if (!playing) return null
   return (
     <>
       <Reticle target={target} mining={mining} />
       {target && <TargetCard key={`${target.depositId}:${target.kind}`} target={target} mining={mining} />}
+      {!target && wall && <WallCard wall={wall} mining={mining} />}
     </>
+  )
+}
+
+/** A cave wall in reach: dig it like dirt for lunar dust (not right under the surface). */
+function WallCard({ wall, mining }: { wall: 'dig' | 'shallow'; mining: boolean }) {
+  return (
+    <div className="absolute left-1/2 top-1/2 ml-10 mt-6 w-56 border-l-2 border-lunar-400/70 bg-ink-950/60 px-4 py-3">
+      <p className="text-[10px] font-semibold tracking-[0.3em] text-lunar-400">CAVE WALL</p>
+      <p className="mt-1 text-[13px] font-semibold tracking-[0.12em] text-lunar-100">REGOLITH ROCK</p>
+      <p className="mt-2 flex items-center gap-2 text-[11px] font-semibold tracking-[0.25em] text-lunar-300">
+        {wall === 'dig' ? (
+          <>
+            <Key>{actionLabel('mine')}</Key>
+            {mining ? 'DIGGING' : 'HOLD TO DIG'}
+          </>
+        ) : (
+          'TOO CLOSE TO THE SURFACE'
+        )}
+      </p>
+    </div>
   )
 }
 
@@ -64,10 +85,9 @@ function Reticle({ target, mining }: { target: TargetInfo | null; mining: boolea
 }
 
 function TargetCard({ target, mining }: { target: TargetInfo; mining: boolean }) {
-  const regionId = useWorldStore((s) => s.regionId)
   const ore = useWorldStore((s) => s.sites.drops[target.depositId] ?? 0)
   const reach = getTool(useInventoryStore((s) => s.equipment.tool))?.range ?? 0
-  const deposit = getRegionDeposits(regionId).byId.get(target.depositId)
+  const { depositId, maxHealth } = target
   const distance = useRef<HTMLSpanElement>(null)
   const integrity = useRef<HTMLSpanElement>(null)
   const percent = useRef<HTMLSpanElement>(null)
@@ -78,18 +98,16 @@ function TargetCard({ target, mining }: { target: TargetInfo; mining: boolean })
     let frame = 0
     const tick = () => {
       setText(distance.current, `${miningRuntime.distance.toFixed(1)} M`)
-      if (deposit) {
-        const health = miningRuntime.health.get(deposit.id) ?? deposit.maxHealth
-        const progress = 1 - health / deposit.maxHealth
-        setText(integrity.current, `${Math.ceil(health)}/${deposit.maxHealth}`)
-        setText(percent.current, `${Math.floor(progress * 100)}%`)
-        if (bar.current) bar.current.style.transform = `scaleX(${progress})`
-      }
+      const health = miningRuntime.health.get(depositId) ?? maxHealth
+      const progress = 1 - health / maxHealth
+      setText(integrity.current, `${Math.ceil(health)}/${maxHealth}`)
+      setText(percent.current, `${Math.floor(progress * 100)}%`)
+      if (bar.current) bar.current.style.transform = `scaleX(${progress})`
       frame = requestAnimationFrame(tick)
     }
     tick()
     return () => cancelAnimationFrame(frame)
-  }, [deposit])
+  }, [depositId, maxHealth])
 
   const resource = getResource(target.resourceId)
   const item = resource ? getItem(resource.itemId) : undefined

@@ -4,7 +4,7 @@ import { Object3D, Vector3, type DirectionalLight, type HemisphereLight, type Sp
 import { CAMERA } from '@/config/camera'
 import { FRAME_PRIORITY } from '@/config/game'
 import { RENDER_LAYERS } from '@/config/graphics'
-import { chartDirection, frameDirection, type Planet } from '@/game/planet'
+import { chartDirection, frameDirection, getCaveQueries, type Planet } from '@/game/planet'
 import { defaultFacing } from '@/game/player'
 import { useGameStore } from '@/stores/gameStore'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -44,6 +44,8 @@ const LAMP = { intensity: 22, distance: 40, angle: 0.55, penumbra: 0.6, fullAt: 
  * starlight (and earthshine on the near side, a light of its own), so the helmet lamp matters.
  */
 const FILL = { day: 0.26, night: 0.06 }
+/** Earthshine brightness on the near side (it fades out underground). */
+const EARTHSHINE = 0.28
 
 /**
  * Sunlight fixed in space, so day and night fall where they always do on the Moon; faint blue
@@ -114,12 +116,22 @@ export function Lighting({ region, planet, shadowMapSize, shadowExtent, followSh
     t.up.copy(t.focus).normalize()
     // The sun's height above the local horizon (as a sine).
     const elevation = sunDir.dot(t.up)
-    // The sky fill is centred on the local vertical, and fades as the sun sets.
+    // In a cave: how far underground, faded in over the first few meters (light only comes in at the mouth).
+    let underground = 0
+    if (following) {
+      const p = playerRuntime.renderPosition
+      if (getCaveQueries().underground(p, 1) !== null) {
+        t.player.copy(p).normalize()
+        underground = smoothstep(1.5, 6, planet.surfaceRadius(t.player) - Math.hypot(p.x, p.y, p.z))
+      }
+    }
+    // The sky fill is centred on the local vertical, and fades as the sun sets, and underground.
     const sky = skyRef.current
     if (sky) {
       sky.position.copy(t.up)
-      sky.intensity = FILL.night + (FILL.day - FILL.night) * smoothstep(-0.12, 0.08, elevation)
+      sky.intensity = (FILL.night + (FILL.day - FILL.night) * smoothstep(-0.12, 0.08, elevation)) * (1 - 0.92 * underground)
     }
+    if (earthRef.current) earthRef.current.intensity = EARTHSHINE * (1 - underground)
     // Where the sun is down the Moon shades everything already: stop re-rendering the shadow map.
     light.shadow.autoUpdate = elevation > -0.05
 
@@ -127,7 +139,8 @@ export function Lighting({ region, planet, shadowMapSize, shadowExtent, followSh
     // Always present (dark by day), so the lights never change and shaders never recompile.
     const lamp = lampRef.current
     if (lamp) {
-      const dark = following ? 1 - smoothstep(LAMP.fullAt, LAMP.offAt, sunDir.dot(t.player.copy(playerRuntime.renderPosition).normalize())) : 0
+      const night = following ? 1 - smoothstep(LAMP.fullAt, LAMP.offAt, sunDir.dot(t.player.copy(playerRuntime.renderPosition).normalize())) : 0
+      const dark = Math.max(night, underground)
       t.lamp += (dark - t.lamp) * (1 - Math.exp(-4 * Math.min(delta, 0.1)))
       lamp.intensity = t.lamp * LAMP.intensity
       if (t.lamp > 0.002) {
@@ -191,7 +204,7 @@ export function Lighting({ region, planet, shadowMapSize, shadowExtent, followSh
         shadow-normalBias={0.04}
       />
       <hemisphereLight ref={skyRef} args={['#8ea6d4', '#2a2927', FILL.day]} />
-      {earthDir && <directionalLight ref={earthRef} target={target} color="#8fb2ff" intensity={0.28} />}
+      {earthDir && <directionalLight ref={earthRef} target={target} color="#8fb2ff" intensity={EARTHSHINE} />}
       <spotLight
         ref={lampRef}
         target={lampTarget}
