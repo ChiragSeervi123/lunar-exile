@@ -1,4 +1,4 @@
-import { createCaveQueries, createPlanetSample, faceDirection, gridParam, nodeKey, nodeSize, type CaveQueries, type CubeNode, type Planet } from '@/game/planet'
+import { createCaveQueries, createPlanetSample, faceDirection, gridParam, nodeKey, nodeSize, OPEN_AT, type CaveQueries, type CubeNode, type Planet } from '@/game/planet'
 import { smoothstep } from '@/utils/math'
 import { vec3 } from '@/utils/vec3'
 
@@ -48,6 +48,45 @@ export interface ChunkMesh {
   buildMs: number
 }
 
+/**
+ * The ground's colour as on the flat map: maria to highlands by albedo, darker crater floors,
+ * bright ejecta and rims, and a province's tint (amount `ta`). No grain or slope shading. Writes
+ * into `out` and returns it.
+ */
+export function surfaceColor(
+  p: ChunkPalette,
+  albedo: number,
+  interior: number,
+  rim: number,
+  ejecta: number,
+  tr: number,
+  tg: number,
+  tb: number,
+  ta: number,
+  out: RGB,
+): RGB {
+  let r = p.maria[0] + (p.highlands[0] - p.maria[0]) * albedo
+  let g = p.maria[1] + (p.highlands[1] - p.maria[1]) * albedo
+  let b = p.maria[2] + (p.highlands[2] - p.maria[2]) * albedo
+  const f = interior * 0.5
+  r += (p.craterFloor[0] - r) * f
+  g += (p.craterFloor[1] - g) * f
+  b += (p.craterFloor[2] - b) * f
+  const e = Math.min(1, ejecta * 0.75 + rim * 0.18)
+  r += (p.ejecta[0] - r) * e
+  g += (p.ejecta[1] - g) * e
+  b += (p.ejecta[2] - b) * e
+  if (ta > 0) {
+    r += (tr - r) * ta
+    g += (tg - g) * ta
+    b += (tb - b) * ta
+  }
+  out[0] = r
+  out[1] = g
+  out[2] = b
+  return out
+}
+
 /** A well-mixed 32-bit hash of grid coordinates, as a fraction in [0, 1). */
 function hash(seed: number, face: number, depth: number, x: number, y: number, salt: number): number {
   let h = Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul(y | 0, 0x165667b1) ^ Math.imul((face << 4) | depth, 0x9e3779b1)
@@ -82,6 +121,7 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
   const ejecta = render ? new Float32Array(n * n) : null
   const tint = render ? new Float32Array(n * n * 4) : null
   const sample = createPlanetSample()
+  const rgb: RGB = [0, 0, 0]
   const dir = vec3()
   let minHeight = Infinity
   let maxHeight = -Infinity
@@ -177,34 +217,15 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
       normals[v * 3] = nx
       normals[v * 3 + 1] = ny
       normals[v * 3 + 2] = nz
-      // Colour as on the flat map: maria to highlands by albedo, darker crater floors, bright
-      // ejecta and rims, a province's tint, per-vertex grain, and darker steep slopes.
-      const p = options.palette!
-      const a = albedo![v]
-      let r = p.maria[0] + (p.highlands[0] - p.maria[0]) * a
-      let gr = p.maria[1] + (p.highlands[1] - p.maria[1]) * a
-      let b = p.maria[2] + (p.highlands[2] - p.maria[2]) * a
-      const f = interior![v] * 0.5
-      r += (p.craterFloor[0] - r) * f
-      gr += (p.craterFloor[1] - gr) * f
-      b += (p.craterFloor[2] - b) * f
-      const e = Math.min(1, ejecta![v] * 0.75 + rim![v] * 0.18)
-      r += (p.ejecta[0] - r) * e
-      gr += (p.ejecta[1] - gr) * e
-      b += (p.ejecta[2] - b) * e
-      const ta = tint![v * 4 + 3]
-      if (ta > 0) {
-        r += (tint![v * 4] - r) * ta
-        gr += (tint![v * 4 + 1] - gr) * ta
-        b += (tint![v * 4 + 2] - b) * ta
-      }
+      // Colour (see surfaceColor), per-vertex grain, and darker steep slopes.
+      surfaceColor(options.palette!, albedo![v], interior![v], rim![v], ejecta![v], tint![v * 4], tint![v * 4 + 1], tint![v * 4 + 2], tint![v * 4 + 3], rgb)
       const radial = Math.hypot(wx[k], wy[k], wz[k])
       const upness = (nx * wx[k] + ny * wy[k] + nz * wz[k]) / radial
       const grain = 0.93 + 0.14 * hash(seed, face, depth, ix * res + i, iy * res + j, SALT_GRAIN)
       const shade = grain * (1 - 0.22 * smoothstep(0.92, 0.55, upness))
-      colors[v * 3] = r * shade
-      colors[v * 3 + 1] = gr * shade
-      colors[v * 3 + 2] = b * shade
+      colors[v * 3] = rgb[0] * shade
+      colors[v * 3 + 1] = rgb[1] * shade
+      colors[v * 3 + 2] = rgb[2] * shade
     }
   }
 
@@ -244,7 +265,7 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
   const full = vertexCount < 65536 ? new Uint16Array(indexCount) : new Uint32Array(indexCount)
   let w = 0
   const triangle = (a: number, b: number, c: number) => {
-    if (open && (open[a] || open[b] || open[c])) return
+    if (open && opensOver(open, a, b, c, spacing, n, g, wx, wy, wz)) return
     full[w++] = a
     full[w++] = b
     full[w++] = c
@@ -300,15 +321,22 @@ export function buildChunkMesh(planet: Planet, node: CubeNode, options: ChunkMes
 const HOLE_SPACING = 3
 const queriesByPlanet = new WeakMap<Planet, CaveQueries>()
 
-/** Per ground vertex: open to a cave below. Null when the chunk has no cave mouth in it. */
-function holes(planet: Planet, cx: number, cy: number, cz: number, radius: number, spacing: number, wx: Float64Array, wy: Float64Array, wz: Float64Array, g: number, res: number): Uint8Array | null {
+interface Holes {
+  /** Per ground vertex: how far from a cave's open space (see CaveQueries.openness). */
+  openness: Float32Array
+  queries: CaveQueries
+}
+
+/** Where the chunk's ground opens into caves below; null when no cave mouth reaches it. */
+function holes(planet: Planet, cx: number, cy: number, cz: number, radius: number, spacing: number, wx: Float64Array, wy: Float64Array, wz: Float64Array, g: number, res: number): Holes | null {
   if (spacing > HOLE_SPACING || planet.caves.length === 0) return null
   let queries = queriesByPlanet.get(planet)
   if (!queries) queriesByPlanet.set(planet, (queries = createCaveQueries(planet)))
   if (queries.near(vec3(cx, cy, cz), radius).length === 0) return null
   const n = res + 1
-  const open = new Uint8Array(n * n)
+  const openness = new Float32Array(n * n)
   const p = vec3()
+  // Only a triangle with a corner this close can have open space inside it.
   let any = false
   for (let j = 0; j <= res; j++) {
     for (let i = 0; i <= res; i++) {
@@ -316,11 +344,33 @@ function holes(planet: Planet, cx: number, cy: number, cz: number, radius: numbe
       p.x = wx[k]
       p.y = wy[k]
       p.z = wz[k]
-      if (queries.opensAt(p)) {
-        open[j * n + i] = 1
-        any = true
-      }
+      const o = queries.openness(p)
+      openness[j * n + i] = o
+      if (o < spacing * 2) any = true
     }
   }
-  return any ? open : null
+  return any ? { openness, queries } : null
+}
+
+const probe = vec3()
+
+/**
+ * Whether ground triangle (a, b, c) (grid vertices) must be left out over a cave mouth: any corner
+ * opens into the cave, or (for a triangle near one) its middle or an edge's middle does, so no
+ * triangle bridges a narrow part of the opening.
+ */
+function opensOver(h: Holes, a: number, b: number, c: number, spacing: number, n: number, g: number, wx: Float64Array, wy: Float64Array, wz: Float64Array): boolean {
+  const o = h.openness
+  if (o[a] < OPEN_AT || o[b] < OPEN_AT || o[c] < OPEN_AT) return true
+  if (Math.min(o[a], o[b], o[c]) > spacing * 2) return false
+  const ka = (Math.floor(a / n) + 1) * g + (a % n) + 1
+  const kb = (Math.floor(b / n) + 1) * g + (b % n) + 1
+  const kc = (Math.floor(c / n) + 1) * g + (c % n) + 1
+  const at = (u: number, v: number, w: number) => {
+    probe.x = wx[ka] * u + wx[kb] * v + wx[kc] * w
+    probe.y = wy[ka] * u + wy[kb] * v + wy[kc] * w
+    probe.z = wz[ka] * u + wz[kb] * v + wz[kc] * w
+    return h.queries.opensAt(probe)
+  }
+  return at(1 / 3, 1 / 3, 1 / 3) || at(0.5, 0.5, 0) || at(0, 0.5, 0.5) || at(0.5, 0, 0.5)
 }

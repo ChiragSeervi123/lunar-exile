@@ -64,9 +64,40 @@ Approved defaults: a Moon 3.5 km in radius; sunlight fixed in space, with earths
   - **Drawing:** the field is rebuilt from shared shapes and materials, so no shader ever compiles while streaming. Deposits that stay keep their crumbling, ore and beam-heat state.
 - **HUD.** It shows the province underfoot, its side of the Moon and live coordinates. Latitude and longitude are fixed so that the landing point is at 0.67°N 23.47°E, as its label always said.
 
+### Exploration (phase 6)
+
+- **Provinces.** Walking into a province you haven't been to shows a "New discovery" banner with its name, side of the Moon, kind and description. Going back to one shows "Entering". A province counts once you've been in it for 1.2 s, so skimming a border doesn't fire banners back and forth. The landing site is the first discovery, on arrival.
+- **Places** (`game/planet/sites.ts`). There are 60 named places to find:
+  - 10 landmark craters, the Great Basin among them;
+  - 8 alien structures: monoliths, arches and pillar rings, two in each terraced anomaly and four alone on the far side;
+  - 42 caves, one per province.
+  
+  Walking up to one gives a "Discovered" notice with a chime. Rocks and deposits are kept clear of structures and cave mouths.
+- **Structures** (`scene/exploration/Structures.tsx`) are low-poly dark stone with fused bands and a faint cyan glow, drawn and given colliders only near the astronaut.
+- **Progress.** The pause menu shows what's been explored: provinces out of 42, places out of 60.
+
+### Caves (phase 7)
+
+Caves are hybrid: the Moon's surface stays a heightfield everywhere, and each cave is its own small volume under it. This is not a voxel engine.
+
+- **Layout** (`game/planet/caves.ts`). Each province has one cave, its entrance 90–320 m from the province's centre on ground no steeper than 14°, at least 620 m from the landing point and 400 m from other caves. From the entrance, a 28° ramp leads down to a first chamber, then 3–5 branches of tunnels and chambers. Caves reach 15–26 m below their entrance. The shape is capsules and spheres with a little noise: a signed distance (`caveShape`), deterministic from the seed.
+- **The ground opens** over the mouth. Detailed terrain chunks (render and collision alike) leave out every triangle with a corner, its middle or an edge's middle in the cave's open space.
+- **Rock** (`scene/caves/caveMesh.ts`) is meshed by surface nets on a 1 m lattice, in 16 m blocks:
+  - **Shell:** rock fills the cave's box under a lid 0.3 m below the ground, minus the tunnels and chambers, minus anything dug. The lid's top is kept only within 5 m of open space, which covers the edge of the ground's hole, so no sky shows round the rim. Faces are wound from the lattice, so none are lost to folding.
+  - **Shading:** rock right under the ground takes the ground's colour and gets sky light. A few meters down the sky light fades to nothing (`caveMaterial.ts`), since the sun's shadow map alone can't keep it out of the rock, and the rock darkens with depth.
+  - **Streaming** (`caveStreamer.ts`): blocks are built within 4 ms per frame for caves within 160 m and freed beyond 260 m. Each block gets a triangle-mesh collider in the terrain collision group, so walking, the camera, aiming and the physics all treat cave rock as ground.
+- **Inside.**
+  - **Safety nets:** the controller's lift-out-of-the-ground net is off below ground in a cave, as is the camera's keep-above-ground clamp. Walls hold the camera in like any terrain.
+  - **Light:** the sky fill and earthshine fade out, and the helmet lamp comes on.
+  - **Suit light:** a dim glow on the camera's side of the astronaut keeps the body readable in third person in the dark, at night too.
+- **Resources.** Each cave has 7–20 deposits on its floors, 12 on average. Deeper is rarer: alien crystals only below 10 m, ancient relics only below 16 m (20 crystals and 7 relics across all 42 caves). They mine, drop ore and save like any other (`cave:<cave>:<resource>:<n>` ids).
+- **Digging.** Aim at cave rock within reach and hold the mine button. The beam takes 0.9 m bites, one every `14 / tool power` seconds, each giving 1 lunar dust, and the rock rebuilds around the hole. Rock within 2.2 m of the surface can't be dug ("Too close to the surface"), so the ground above never caves in. Each cave keeps at most 600 bites.
+
 ### Saves
 
-Save version 4 stores the astronaut's world position and heading. Versions 1–3 migrate: a flat-map position is carried onto the Moon through the chart, at the same spot, height above the ground and heading. Deposit ids are unchanged, so mined-out sites carry over.
+- **Version 5** adds what's been explored (province and place ids) and each cave's digs, as [x, y, z, radius] in the cave's own frame. Version 4 saves migrate with nothing explored and nothing dug, and every field is checked on load.
+- **Version 4** stores the astronaut's world position and heading. Versions 1–3 migrate: a flat-map position is carried onto the Moon through the chart, at the same spot, height above the ground and heading. Deposit ids are unchanged, so mined-out sites carry over.
+- **Underground saves.** A save made underground in a cave resumes there, not on the surface.
 
 ## Verification
 

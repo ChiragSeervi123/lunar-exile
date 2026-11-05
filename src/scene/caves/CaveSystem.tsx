@@ -6,17 +6,23 @@ import { FRAME_PRIORITY } from '@/config/game'
 import { getCaveQueries, getPlanet } from '@/game/planet'
 import { useCaveStore } from '@/stores/caveStore'
 import { playerRuntime } from '@/stores/runtime'
+import type { SurfacePaletteDef } from '@/types/content'
+import { toChunkPalette } from '../planet/palette'
 import { withPlanetShadow } from '../planet/planetShadow'
 import { planetTerrainStatus } from '../planet/terrainStatus'
+import { withCaveSky } from './caveMaterial'
 import { caveRuntime } from './caveRuntime'
 import { createCaveStreamer } from './caveStreamer'
 
-/** Caves under the Moon near the astronaut: their rock, to see and to walk on. Must sit inside <Physics>. */
-export function CaveSystem() {
+/**
+ * Caves under the Moon near the astronaut: their rock, to see and to walk on. `palette` is the
+ * terrain's, so rock right under the ground matches it. Must sit inside <Physics>.
+ */
+export function CaveSystem({ palette }: { palette: SurfacePaletteDef }) {
   const { world, rapier } = useRapier()
   const group = useRef<Group>(null)
   const material = useMemo(
-    () => withPlanetShadow(new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.97, metalness: 0 })),
+    () => withCaveSky(withPlanetShadow(new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.97, metalness: 0 }))),
     [],
   )
   useEffect(() => () => material.dispose(), [material])
@@ -31,6 +37,7 @@ export function CaveSystem() {
       group: root,
       material,
       physics: { world, rapier },
+      palette: toChunkPalette(palette),
     })
     caveRuntime.streamer = streamer
     // New digs: rebuild the rock they touched (a loaded save rebuilds as caves come into range).
@@ -46,7 +53,7 @@ export function CaveSystem() {
       streamer.dispose()
       if (caveRuntime.streamer === streamer) caveRuntime.streamer = null
     }
-  }, [world, rapier, material])
+  }, [world, rapier, material, palette])
 
   // After the camera has moved this frame.
   useFrame(({ camera }) => {

@@ -2,6 +2,7 @@ import type { RapierCollider, RapierContext } from '@react-three/rapier'
 import { BufferAttribute, BufferGeometry, Mesh, Sphere, Vector3, type Group, type Material } from 'three'
 import { COLLISION } from '@/config/game'
 import { toCaveLocal, type Cave, type CaveQueries, type CaveShape, type Planet } from '@/game/planet'
+import type { ChunkPalette } from '@/scene/planet/chunkMesh'
 import { vec3, type Vec3 } from '@/utils/vec3'
 import { BLOCK, buildCaveBlock, caveBlocks, createCaveGround, type CaveBlockMesh, type CaveGround } from './caveMesh'
 
@@ -53,8 +54,11 @@ export function createCaveStreamer(options: {
   group: Group | null
   material: Material | null
   physics: { world: World; rapier: Rapier } | null
+  /** The terrain's colours, so rock right under the ground matches it; null leaves it rock-coloured. */
+  palette?: ChunkPalette | null
 }): CaveStreamer {
   const { planet, queries, digsOf, group, material, physics } = options
+  const palette = options.palette ?? null
   const loaded = new Map<string, Loaded>()
   const byCollider = new Map<number, Cave>()
   const stats = { caves: 0, blocks: 0, queued: 0, triangles: 0 }
@@ -68,6 +72,7 @@ export function createCaveStreamer(options: {
         const geometry = new BufferGeometry()
         geometry.setAttribute('position', new BufferAttribute(block.positions, 3))
         geometry.setAttribute('color', new BufferAttribute(block.colors, 3))
+        geometry.setAttribute('sky', new BufferAttribute(block.sky, 1))
         geometry.setIndex(new BufferAttribute(block.indices, 1))
         geometry.boundingSphere = new Sphere(new Vector3(), BLOCK * 1.2)
         const mesh = new Mesh(geometry, material)
@@ -117,7 +122,7 @@ export function createCaveStreamer(options: {
       const r = Math.hypot(center.x, center.y, center.z)
       for (const cave of queries.near(center, LOAD)) {
         if (loaded.has(cave.id)) continue
-        const l: Loaded = { cave, shape: queries.shape(cave), ground: createCaveGround(planet, cave), queue: caveBlocks(cave), built: new Map() }
+        const l: Loaded = { cave, shape: queries.shape(cave), ground: createCaveGround(planet, cave, palette), queue: caveBlocks(cave), built: new Map() }
         sortQueue(l, center)
         loaded.set(cave.id, l)
       }

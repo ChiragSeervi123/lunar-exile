@@ -6,11 +6,13 @@ import {
   fromCaveLocal,
   DEPOSIT_CELL_DEPTH,
   getCaveDeposits,
+  getCaveQueries,
   getDiscoverySites,
   getLandingDeposits,
   getPlanet,
   getPlanetDeposits,
   nodesWithin,
+  toCaveLocal,
   toLocal,
 } from '@/game/planet'
 import { inputState } from '@/input/inputState'
@@ -135,6 +137,17 @@ export function exposeDebugHandles(): void {
       // Well inside the chamber; the body falls to its floor.
       playerRuntime.teleport = fromCaveLocal(cave, vec3(c.x, c.y - cave.chambers[0].r * 0.4, c.z), vec3())
       return cave.name
+    },
+    /**
+     * The cave a world point is under, if any: its id, the point in cave coordinates (x east, y up,
+     * z south from the mouth) and how open the cave is there (negative in open space, digs aside).
+     */
+    caveAt: (p: Vec3) => {
+      const queries = getCaveQueries()
+      const cave = queries.underground(p, 0)
+      if (!cave) return null
+      const local = toCaveLocal(cave, p, vec3())
+      return { cave: cave.id, local, open: queries.shape(cave).open(local) }
     },
     /** Every crater, structure and cave to find: name, kind and id, for `goTo`. */
     sites: () => getDiscoverySites().map((s) => `${s.name} (${s.kind}, ${s.id})`),

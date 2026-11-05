@@ -6,6 +6,9 @@ import type { Planet } from './sampler'
 /** Local height (meters, up from the entrance) of the rock "lid" just under the ground, in a cave's frame. */
 export const CAVE_LID = 0.3
 
+/** Ground points less than this far from a cave's open space open into it, meters. */
+export const OPEN_AT = 0.15
+
 export interface CaveQueries {
   /** The cave's shape (its open space), created once per cave. */
   shape(cave: Cave): CaveShape
@@ -16,6 +19,11 @@ export interface CaveQueries {
    * lies in a cave's open space, close to the surface.
    */
   opensAt(p: Vec3): boolean
+  /**
+   * How far world point `p` is from a cave's open space, about in meters (negative inside it), for
+   * points within a cave's volume; Infinity elsewhere. `opensAt` is this below OPEN_AT.
+   */
+  openness(p: Vec3): number
   /**
    * The cave world point `p` is inside of, underground (at least `below` meters under the
    * surface, within the cave's volume), or null. Nothing pushes such a point back up to the ground.
@@ -50,9 +58,17 @@ export function createCaveQueries(planet: Planet): CaveQueries {
     opensAt(p) {
       for (const c of near(p)) {
         toCaveLocal(c, p, local)
-        if (inBox(c, local) && shape(c).open(local) < 0.15) return true
+        if (inBox(c, local) && shape(c).open(local) < OPEN_AT) return true
       }
       return false
+    },
+    openness(p) {
+      let best = Infinity
+      for (const c of near(p)) {
+        toCaveLocal(c, p, local)
+        if (inBox(c, local)) best = Math.min(best, shape(c).open(local))
+      }
+      return best
     },
     underground(p, below = 0.5) {
       for (const c of near(p)) {

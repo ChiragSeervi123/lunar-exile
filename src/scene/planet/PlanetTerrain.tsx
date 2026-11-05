@@ -1,14 +1,15 @@
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import { BufferAttribute, BufferGeometry, Color, Group, Mesh, MeshStandardMaterial, Sphere, Vector3, type MeshDepthMaterial } from 'three'
+import { BufferAttribute, BufferGeometry, Group, Mesh, MeshStandardMaterial, Sphere, Vector3, type MeshDepthMaterial } from 'three'
 import { FRAME_PRIORITY } from '@/config/game'
 import { PLANET_TERRAIN } from '@/config/planet'
 import type { Planet } from '@/game/planet'
 import type { SurfacePaletteDef } from '@/types/content'
 import { vec3, type Vec3 } from '@/utils/vec3'
 import { createChunkBuilder, type ChunkBuilder } from './chunkBuilder'
-import type { ChunkMesh, ChunkPalette, RGB } from './chunkMesh'
+import type { ChunkMesh } from './chunkMesh'
 import { createLodSelection, selectLod, type ChunkBounds, type LodSelection } from './lod'
+import { toChunkPalette } from './palette'
 import { withPlanetShadow } from './planetShadow'
 import { createSkirtlessDepthMaterial, withSkirtShading } from './skirtShading'
 import { planetTerrainStatus } from './terrainStatus'
@@ -45,11 +46,6 @@ interface PlanetTerrainProps {
   /** Deepest chunk level and split distance, from the graphics quality. */
   depth: number
   split: number
-}
-
-const linear = (hex: string): RGB => {
-  const c = new Color(hex)
-  return [c.r, c.g, c.b]
 }
 
 /** A drawable mesh for a finished chunk, hidden until the level of detail picks it. */
@@ -115,12 +111,7 @@ export function PlanetTerrain({ planet, palette, depth, split }: PlanetTerrainPr
   useEffect(() => {
     const root = group.current
     if (!root) return
-    const chunkPalette: ChunkPalette = {
-      highlands: linear(palette.highlands),
-      maria: linear(palette.maria),
-      craterFloor: linear(palette.craterFloor),
-      ejecta: linear(palette.ejecta),
-    }
+    const chunkPalette = toChunkPalette(palette)
     const workers = Math.min(PLANET_TERRAIN.maxWorkers, Math.max(1, (navigator.hardwareConcurrency || 4) - 2))
     const builder = createChunkBuilder(
       planet,

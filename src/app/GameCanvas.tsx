@@ -41,7 +41,7 @@ export function GameCanvas() {
             <FirstPersonTool />
           </CameraRig>
           <PlanetWorld preset={preset} />
-          <CaveSystem />
+          <CaveSystem palette={region.palette} />
           <Mining region={region} particleBudget={preset.particleBudget} />
           {phase !== 'menu' && <Player region={region} planet={planet} />}
           <Structures />

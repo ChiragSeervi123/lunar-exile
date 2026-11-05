@@ -1,6 +1,6 @@
 import { useFrame } from '@react-three/fiber'
 import { useLayoutEffect, useMemo, useRef } from 'react'
-import { Object3D, Vector3, type DirectionalLight, type HemisphereLight, type SpotLight } from 'three'
+import { Object3D, Vector3, type DirectionalLight, type HemisphereLight, type PointLight, type SpotLight } from 'three'
 import { CAMERA } from '@/config/camera'
 import { FRAME_PRIORITY } from '@/config/game'
 import { RENDER_LAYERS } from '@/config/graphics'
@@ -40,6 +40,12 @@ const DEPTH_BIAS = 0.04
 /** Helmet lamp: brightness at full darkness, reach (m), beam half-angle (rad), and the sun's height (sine) where it fades in. */
 const LAMP = { intensity: 22, distance: 40, angle: 0.55, penumbra: 0.6, fullAt: -0.02, offAt: 0.09 }
 /**
+ * Suit light: a dim glow on the camera's side of the astronaut, with the lamp, so in the third
+ * person view the body isn't a black cut-out against the lamp's beam. Brightness, reach (m), and
+ * how far toward the camera from the chest it sits (m).
+ */
+const GLOW = { intensity: 1.4, distance: 5, offset: 1.3, chest: 1.1 }
+/**
  * Sky/ground fill by day and by night. By day it keeps detail in shadows; at night there is only
  * starlight (and earthshine on the near side, a light of its own), so the helmet lamp matters.
  */
@@ -58,6 +64,7 @@ export function Lighting({ region, planet, shadowMapSize, shadowExtent, followSh
   const earthRef = useRef<DirectionalLight>(null)
   const skyRef = useRef<HemisphereLight>(null)
   const lampRef = useRef<SpotLight>(null)
+  const glowRef = useRef<PointLight>(null)
   const sunDir = useMemo(() => new Vector3(planet.sunDirection.x, planet.sunDirection.y, planet.sunDirection.z), [planet])
   const earthDir = useMemo(
     () => (planet.earthDirection ? new Vector3(planet.earthDirection.x, planet.earthDirection.y, planet.earthDirection.z) : null),
@@ -138,15 +145,29 @@ export function Lighting({ region, planet, shadowMapSize, shadowExtent, followSh
     // Helmet lamp: on in the dark, pointing where the astronaut looks, slightly toward the ground.
     // Always present (dark by day), so the lights never change and shaders never recompile.
     const lamp = lampRef.current
-    if (lamp) {
+    const glow = glowRef.current
+    if (lamp && glow) {
       const night = following ? 1 - smoothstep(LAMP.fullAt, LAMP.offAt, sunDir.dot(t.player.copy(playerRuntime.renderPosition).normalize())) : 0
       const dark = Math.max(night, underground)
       t.lamp += (dark - t.lamp) * (1 - Math.exp(-4 * Math.min(delta, 0.1)))
       lamp.intensity = t.lamp * LAMP.intensity
+      glow.intensity = 0
       if (t.lamp > 0.002) {
         const p = playerRuntime.renderPosition
         const f = playerRuntime.renderFrame
         const firstPerson = usePlayerStore.getState().cameraMode === 'first-person' && useGameStore.getState().phase !== 'menu'
+        if (!firstPerson) {
+          const c = cameraRuntime.position
+          const cx = p.x + f.up.x * GLOW.chest
+          const cy = p.y + f.up.y * GLOW.chest
+          const cz = p.z + f.up.z * GLOW.chest
+          const d = Math.hypot(c.x - cx, c.y - cy, c.z - cz)
+          if (d > 0.01) {
+            const k = Math.min(GLOW.offset, d * 0.5) / d
+            glow.position.set(cx + (c.x - cx) * k, cy + (c.y - cy) * k, cz + (c.z - cz) * k)
+            glow.intensity = t.lamp * GLOW.intensity
+          }
+        }
         const yaw = firstPerson ? cameraRuntime.yaw : playerRuntime.facing
         const pitch = clamp(cameraRuntime.pitch, -0.9, 0.5) * (firstPerson ? 1 : 0.6) - 0.12
         const dir = frameDirection(f, yaw, pitch, t.view)
@@ -215,6 +236,7 @@ export function Lighting({ region, planet, shadowMapSize, shadowExtent, followSh
         penumbra={LAMP.penumbra}
         decay={1.6}
       />
+      <pointLight ref={glowRef} color="#cdd6e6" intensity={0} distance={GLOW.distance} decay={2} />
     </>
   )
 }

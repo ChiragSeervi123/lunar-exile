@@ -1,5 +1,6 @@
-import { CAVE_LID, fromCaveLocal, toCaveLocal, type Cave, type CaveShape, type Planet } from '@/game/planet'
-import { vec3, type Vec3 } from '@/utils/vec3'
+import { CAVE_LID, createPlanetSample, fromCaveLocal, toCaveLocal, type Cave, type CaveShape, type Planet } from '@/game/planet'
+import { surfaceColor, type ChunkPalette, type RGB } from '@/scene/planet/chunkMesh'
+import { normalize, vec3 } from '@/utils/vec3'
 
 /*
  * A cave's rock as low-poly meshes, one per 16 m block of its volume. Rock fills the cave's box
@@ -23,20 +24,59 @@ export interface CaveBlockMesh {
   center: [number, number, number]
   positions: Float32Array
   colors: Float32Array
+  /**
+   * How much of the sky (sunlight, earthshine) reaches each vertex, 0..1: all of it at the mouth,
+   * none a few meters down. The shadow map is far too coarse to keep it out of the rock by itself.
+   */
+  sky: Float32Array
   indices: Uint32Array
 }
+
+function dist2(p: readonly number[], a: number, b: number): number {
+  const x = p[a * 3] - p[b * 3]
+  const y = p[a * 3 + 1] - p[b * 3 + 1]
+  const z = p[a * 3 + 2] - p[b * 3 + 2]
+  return x * x + y * y + z * z
+}
+
+/**
+ * The lid is kept this far (m) from the cave's open space: past the edge of the ground's hole over
+ * the mouth, which drops whole terrain triangles (up to 3 m across, so over 4 m corner to corner)
+ * that touch open space. Less, and slivers of sky show round the rim.
+ */
+const LID_MARGIN = 5
+
+/** Sky light fades from full this far under the ground to none at SKY_NONE, meters. */
+const SKY_FULL = 0.6
+const SKY_NONE = 4.5
 
 /** Ground height (local y) over each lattice column of a cave, worked out once and shared by its blocks. */
 export interface CaveGround {
   heightAt(x: number, z: number): number
+  /** The ground's own colour over a column (as the terrain draws it), or null without a palette. */
+  colorAt(x: number, z: number): RGB | null
 }
 
-export function createCaveGround(planet: Planet, cave: Cave): CaveGround {
+export function createCaveGround(planet: Planet, cave: Cave, palette: ChunkPalette | null = null): CaveGround {
   const columns = new Map<number, number>()
+  const colors = new Map<number, RGB>()
+  const sample = createPlanetSample()
   const world = vec3()
   const local = vec3()
   const dir = vec3()
   return {
+    colorAt(x, z) {
+      if (!palette) return null
+      const key = (Math.round(x) + 512) * 1024 + (Math.round(z) + 512)
+      let c = colors.get(key)
+      if (!c) {
+        normalize(dir, fromCaveLocal(cave, vec3(Math.round(x), 0, Math.round(z)), world))
+        const s = planet.sample(dir, sample)
+        c = surfaceColor(palette, s.albedo, s.craterInterior, s.craterRim, s.ejecta, s.tintR, s.tintG, s.tintB, s.tintAmount, [0, 0, 0])
+        colors.set(key, c)
+      }
+      return c
+    },
     heightAt(x, z) {
       const key = (Math.round(x) + 512) * 1024 + (Math.round(z) + 512)
       let h = columns.get(key)
@@ -160,25 +200,23 @@ export function buildCaveBlock(cave: Cave, shape: CaveShape, ground: CaveGround,
     }
   }
 
-  // A quad across every crossed lattice edge this block owns (edges starting inside it).
+  // A quad across every crossed lattice edge this block owns (edges starting inside it). The four
+  // cells round an edge are listed counter-clockwise seen from the edge's far (+) end, so the
+  // winding follows from which end is open, not from where the vertices happen to sit: the
+  // vertices move inside their cells, and a winding read off the geometry flips (and gets culled,
+  // leaving a hole) wherever a quad folds.
   const indices: number[] = []
-  const quad = (a: number, b: number, c: number, d: number, towardAir: Vec3) => {
+  const quad = (a: number, b: number, c: number, d: number, airAhead: boolean) => {
     if (a < 0 || b < 0 || c < 0 || d < 0) return
-    // Wind so the face looks toward the open side.
-    const ax = positions[a * 3]
-    const ay = positions[a * 3 + 1]
-    const az = positions[a * 3 + 2]
-    const ux = positions[b * 3] - ax
-    const uy = positions[b * 3 + 1] - ay
-    const uz = positions[b * 3 + 2] - az
-    const vx = positions[c * 3] - ax
-    const vy = positions[c * 3 + 1] - ay
-    const vz = positions[c * 3 + 2] - az
-    const facing = (uy * vz - uz * vy) * towardAir.x + (uz * vx - ux * vz) * towardAir.y + (ux * vy - uy * vx) * towardAir.z
-    if (facing >= 0) indices.push(a, b, c, a, c, d)
-    else indices.push(a, c, b, a, d, c)
+    // Split along the shorter diagonal: flatter, fewer slivers.
+    const ac = dist2(positions, a, c)
+    const bd = dist2(positions, b, d)
+    if (airAhead) {
+      if (ac <= bd) indices.push(a, b, c, a, c, d)
+      else indices.push(a, b, d, b, c, d)
+    } else if (ac <= bd) indices.push(a, c, b, a, d, c)
+    else indices.push(a, d, b, b, d, c)
   }
-  const air = vec3()
   for (let k = 0; k < BLOCK; k++) {
     for (let j = 0; j < BLOCK; j++) {
       for (let i = 0; i < BLOCK; i++) {
@@ -193,14 +231,11 @@ export function buildCaveBlock(cave: Cave, shape: CaveShape, ground: CaveGround,
           // round the cave mouth, where the ground's hole is a little wider than the tunnel; not the
           // lid's underside anywhere else, which nothing can see.
           const airIsStart = f0 <= 0
-          if ((airIsStart ? carved[at(i, j, k)] : carved[at(ni, nj, nk)]) > 2) continue
-          const s = airIsStart ? -1 : 1
-          air.x = axis === 0 ? s : 0
-          air.y = axis === 1 ? s : 0
-          air.z = axis === 2 ? s : 0
-          if (axis === 0) quad(cellIndex[cellAt(i, j - 1, k - 1)], cellIndex[cellAt(i, j, k - 1)], cellIndex[cellAt(i, j, k)], cellIndex[cellAt(i, j - 1, k)], air)
-          else if (axis === 1) quad(cellIndex[cellAt(i - 1, j, k - 1)], cellIndex[cellAt(i - 1, j, k)], cellIndex[cellAt(i, j, k)], cellIndex[cellAt(i, j, k - 1)], air)
-          else quad(cellIndex[cellAt(i - 1, j - 1, k)], cellIndex[cellAt(i, j - 1, k)], cellIndex[cellAt(i, j, k)], cellIndex[cellAt(i - 1, j, k)], air)
+          if ((airIsStart ? carved[at(i, j, k)] : carved[at(ni, nj, nk)]) > LID_MARGIN) continue
+          const ahead = !airIsStart
+          if (axis === 0) quad(cellIndex[cellAt(i, j - 1, k - 1)], cellIndex[cellAt(i, j, k - 1)], cellIndex[cellAt(i, j, k)], cellIndex[cellAt(i, j - 1, k)], ahead)
+          else if (axis === 1) quad(cellIndex[cellAt(i - 1, j, k - 1)], cellIndex[cellAt(i - 1, j, k)], cellIndex[cellAt(i, j, k)], cellIndex[cellAt(i, j, k - 1)], ahead)
+          else quad(cellIndex[cellAt(i - 1, j - 1, k)], cellIndex[cellAt(i, j - 1, k)], cellIndex[cellAt(i, j, k)], cellIndex[cellAt(i - 1, j, k)], ahead)
         }
       }
     }
@@ -211,6 +246,7 @@ export function buildCaveBlock(cave: Cave, shape: CaveShape, ground: CaveGround,
   const center = fromCaveLocal(cave, vec3(ox + size / 2, oy + size / 2, oz + size / 2), vec3())
   const out = new Float32Array(positions.length)
   const colors = new Float32Array(positions.length)
+  const sky = new Float32Array(positions.length / 3)
   const w = vec3()
   for (let v = 0; v < positions.length; v += 3) {
     fromCaveLocal(cave, vec3(positions[v], positions[v + 1], positions[v + 2]), w)
@@ -218,8 +254,19 @@ export function buildCaveBlock(cave: Cave, shape: CaveShape, ground: CaveGround,
     out[v + 1] = w.y - center.y
     out[v + 2] = w.z - center.z
     const deep = Math.min(1, Math.max(0, -positions[v + 1] / 30))
-    const grain = 0.9 + 0.2 * (((Math.sin(positions[v] * 12.9898 + positions[v + 1] * 78.233 + positions[v + 2] * 37.719) * 43758.5453) % 1) + 1) % 1
-    for (let c = 0; c < 3; c++) colors[v + c] = (ROCK[c] + (DEEP[c] - ROCK[c]) * deep) * grain
+    const noise = (Math.sin(positions[v] * 12.9898 + positions[v + 1] * 78.233 + positions[v + 2] * 37.719) * 43758.5453) % 1
+    const grain = 0.9 + 0.2 * ((noise + 1) % 1)
+    const under = ground.heightAt(positions[v], positions[v + 2]) - positions[v + 1]
+    const t = Math.min(1, Math.max(0, (under - SKY_FULL) / (SKY_NONE - SKY_FULL)))
+    const open = 1 - t * t * (3 - 2 * t)
+    sky[v / 3] = open
+    // Right under the ground (the lid and the mouth's lip) the rock takes the ground's colour, so
+    // the lip and any of the lid seen round the mouth blend into the terrain.
+    const top = open > 0 ? ground.colorAt(positions[v], positions[v + 2]) : null
+    for (let c = 0; c < 3; c++) {
+      const rock = ROCK[c] + (DEEP[c] - ROCK[c]) * deep
+      colors[v + c] = (top ? rock + (top[c] - rock) * open : rock) * grain
+    }
   }
-  return { bx, by, bz, center: [center.x, center.y, center.z], positions: out, colors, indices: Uint32Array.from(indices) }
+  return { bx, by, bz, center: [center.x, center.y, center.z], positions: out, colors, sky, indices: Uint32Array.from(indices) }
 }
