@@ -5,6 +5,7 @@ import {
   chartDirection,
   fromCaveLocal,
   DEPOSIT_CELL_DEPTH,
+  getCaveDeposits,
   getDiscoverySites,
   getLandingDeposits,
   getPlanet,
@@ -82,12 +83,16 @@ export function exposeDebugHandles(): void {
     },
     /** The landing site's deposits on the Moon (world positions). */
     deposits: () => getLandingDeposits().list,
-    /** Deposits across the Moon within `radius` meters of the astronaut, nearest first (the landing site's included). */
+    /** Deposits across the Moon within `radius` meters of the astronaut, nearest first (the landing site's and caves' included). */
     nearbyDeposits: (radius = 120) => {
       const here = playerRuntime.position
       const dir = normalize(vec3(), here)
       const found = [...getLandingDeposits().list]
       nodesWithin(dir, radius / R, DEPOSIT_CELL_DEPTH, (n) => found.push(...getPlanetDeposits().cell({ ...n })))
+      for (const cave of planet.caves) {
+        const o = cave.origin
+        if (Math.hypot(o.x - here.x, o.y - here.y, o.z - here.z) < radius + 80) found.push(...getCaveDeposits(cave.id))
+      }
       const away = (d: Vec3) => Math.hypot(d.x - here.x, d.y - here.y, d.z - here.z)
       return found.filter((d) => away(d) <= radius).sort((a, b) => away(a) - away(b))
     },
