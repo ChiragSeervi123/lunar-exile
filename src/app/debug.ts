@@ -98,6 +98,17 @@ export function exposeDebugHandles(): void {
       const r = planet.surfaceRadius(d)
       playerRuntime.teleport = vec3(d.x * r, d.y * r, d.z * r)
     },
+    /** Every province: name, kind and side, for `goTo`. */
+    provinces: () => planet.provinces.map((p) => `${p.name} (${p.kind}, ${p.side} side)`),
+    /** Moves the astronaut to the middle of a province, by name or kind (e.g. 'Aitken Basin', 'mountains'). */
+    goTo: (name: string) => {
+      const q = name.toLowerCase()
+      const p = planet.provinces.find((x) => x.name.toLowerCase() === q) ?? planet.provinces.find((x) => x.kind === q)
+      if (!p) return `no province "${name}"; see provinces()`
+      const r = planet.surfaceRadius(p.center)
+      playerRuntime.teleport = vec3(p.center.x * r, p.center.y * r, p.center.z * r)
+      return `${p.name} (${p.kind}, ${p.side} side)`
+    },
     stores: {
       game: useGameStore,
       player: usePlayerStore,

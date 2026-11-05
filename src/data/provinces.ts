@@ -175,7 +175,7 @@ export const PROVINCE_TYPES = {
       { resourceId: 'regolith-deposit', density: 0.4 },
       { resourceId: 'alien-crystal', density: 0.08 },
     ],
-    names: ['Lacus Ferri', 'Vena Titanis', 'Lacus Metalli', 'Ilmenite Reach'],
+    names: ['Lacus Ferri', 'Vena Titanis', 'Lacus Metalli', 'Ilmenite Reach', 'Vena Helii', 'Lacus Crystalli', 'Sinus Olivini'],
   },
   anomaly: {
     label: 'Anomaly',

@@ -4,6 +4,8 @@ export const planetTerrainStatus = {
   ready: false,
   displayed: 0,
   cached: 0,
+  /** Cached chunks that have been drawn, so hold GPU buffers (5 each: position, normal, colour, skirt, index). */
+  drawn: 0,
   queued: 0,
   inFlight: 0,
   built: 0,

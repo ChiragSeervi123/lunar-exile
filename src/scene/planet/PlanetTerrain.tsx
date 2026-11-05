@@ -19,6 +19,8 @@ interface ChunkRecord {
   triangles: number
   /** Frame it was last part of the view (or its ancestry). */
   lastUsed: number
+  /** Has been shown, so its buffers are on the GPU (three uploads them when first drawn). */
+  drawn: boolean
 }
 
 /** The terrain's drawing material, and its shadow-pass material (without the skirts). */
@@ -69,10 +71,22 @@ function chunkRecord(chunk: ChunkMesh, materials: TerrainMaterials, planetRadius
   mesh.visible = false
   planetTerrainStatus.built++
   planetTerrainStatus.buildMs += (chunk.buildMs - planetTerrainStatus.buildMs) * 0.1
-  return {
+  const record: ChunkRecord = {
     mesh,
     bounds: { center: vec3(...chunk.center), radius: chunk.radius, top: planetRadius + chunk.maxHeight },
-    triangles: chunk.indices.length / 3, lastUsed: frame }
+    triangles: chunk.indices.length / 3,
+    lastUsed: frame,
+    drawn: false,
+  }
+  // Rendered for the first time (in view or in the sun's shadow pass): its buffers are now on the GPU.
+  const uploaded = () => {
+    if (record.drawn) return
+    record.drawn = true
+    planetTerrainStatus.drawn++
+  }
+  mesh.onBeforeRender = uploaded
+  mesh.onBeforeShadow = uploaded
+  return record
 }
 
 /**
@@ -135,6 +149,7 @@ export function PlanetTerrain({ planet, palette, depth, split }: PlanetTerrainPr
       records.clear()
       state.current = null
       planetTerrainStatus.ready = false
+      planetTerrainStatus.drawn = 0
     }
   }, [planet, palette, material])
 
@@ -190,6 +205,7 @@ export function PlanetTerrain({ planet, palette, depth, split }: PlanetTerrainPr
         root.remove(record.mesh)
         record.mesh.geometry.dispose()
         records.delete(key)
+        if (record.drawn) planetTerrainStatus.drawn--
       }
     }
 

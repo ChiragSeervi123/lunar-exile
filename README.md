@@ -41,31 +41,29 @@ utils, types, config, data  ->  game  ->  stores  ->  audio, save, input  ->  sc
 | `src/types/` | Shapes of data-driven content (`ItemDef`, `EnemyDef`, `RegionDef`, ...). |
 | `src/config/` | Tunable constants: physics, collision groups, frame order, camera, player controller feel, graphics presets, key bindings, save settings. |
 | `src/data/` | Game content as plain objects keyed by id, plus base player stats. **Add a region, enemy, resource, weapon, item, upgrade, ship, or mission by adding an entry here**; ids are derived with `keyof typeof` so they stay type-checked. |
-| `src/game/` | Pure TypeScript game logic per system. **No React, no three.js, no stores.** `world/` generates terrain, craters and rocks and exposes `heightAt` / `normalAt`; `player/` holds the movement motor (acceleration, jumping, gravity) and the animation state machine; `mining/` places deposits and holds the extraction math and mined-out site rules; `inventory/` holds the backpack rules (stack limits, validation). |
+| `src/game/` | Pure TypeScript game logic per system. **No React, no three.js, no stores.** `planet/` is the spherical Moon (cube-sphere geometry, provinces, craters, ground sampling, rocks, local frames, selenographic coordinates); `world/` generates the landing site's flat map (terrain, craters, rocks), which the Moon embeds; `player/` holds the movement motor (acceleration, jumping, gravity) and the animation state machine; `mining/` places deposits and holds the extraction math and mined-out site rules; `inventory/` holds the backpack rules (stack limits, validation). |
 | `src/stores/` | Zustand stores for state the UI reacts to (game phase, player, inventory, world sites, mining target, notifications, settings, input status). `runtime.ts` holds the per-frame player, motion, animation, camera and mining state, mutated in place and never read during render. |
 | `src/input/` | The single set of keyboard and mouse listeners, live input state, and pointer lock. Gameplay keys are only taken while playing (the inventory key also while the inventory is open). |
 | `src/audio/` | Sound manifest, `playSound` and the mining beam's hum. All current sounds are synthesised; file sounds come later. |
 | `src/save/` | Snapshots stores to `localStorage` and restores them (versioned, with migrations, and every field checked on load). |
-| `src/scene/` | React Three Fiber components: `world/` (terrain, rocks and their colliders, lighting), `sky/` (stars, Earth, sun), `player/` (the astronaut, its tool, character controller and procedural animation), `camera/` (menu shot, third- and first-person follow), `mining/` (deposits, their colliders, the mining system, beam and particles). |
+| `src/scene/` | React Three Fiber components: `planet/` (streamed terrain chunks and their workers, level of detail, collision tiles, rocks, the Moon's own shadow), `world/` (lighting), `sky/` (stars, Earth, sun), `player/` (the astronaut, its tool, character controller and procedural animation), `camera/` (menu shot, third- and first-person follow), `mining/` (deposits, their colliders, the mining system, beam and particles). |
 | `src/ui/` | DOM UI with Tailwind: `components/`, `menus/`, `hud/`, `inventory/`, `hooks/`. UI never touches saving directly; it receives callbacks. |
 | `src/app/` | Startup (`bootstrap.ts`), session flow (`session.ts`: new game, continue, pause, exit, mouse capture), top-level composition (`GameRoot`, `GameCanvas`), and a read-only debug handle (`debug.ts`). |
 
-### The lunar world
+### The Moon
 
-A region (`src/data/regions.ts`) describes its world as data: terrain seed and relief, crater tiers and hand-placed landmark craters, the horizon mountain ring, rock densities, sun and Earth positions, fog and surface colours. From that:
+The world is a sphere 3.5 km in radius (`data/moon.ts`), centred on the origin, with no edges or boundaries: a lap is about 22 km. See [docs/milestone-4.md](docs/milestone-4.md) for the full design.
 
-1. `game/world/terrain.ts` builds a deterministic height function: rolling noise, every crater's profile (bowl, raised irregular rim, central peak, ejecta rays), the mountain ring, and a levelled landing zone.
-2. `game/world/rocks.ts` scatters debris, rocks, boulders and crater-rim formations. Boulders and rocks never depend on graphics quality, so they can safely be obstacles.
-3. `scene/world/` turns these into a low-poly mesh (fine grid over the playable area, rings that coarsen toward the horizon), instanced rocks, a Rapier heightfield for the ground, and rounded-box colliders for boulders and rocks (one fixed body).
-
-A new region (e.g. Dust Plains or Crater Valley) is a new entry in `REGIONS` with its own parameters.
+1. `game/planet/sampler.ts` defines the ground as a deterministic function of direction: 42 provinces (`data/provinces.ts`: maria, highlands, mountain ranges, rilles, crater fields, regolith plains, mineral provinces, a giant far-side impact basin, terraced anomalies), each with its own relief, craters, brightness and tint, blended smoothly at their borders; craters at every scale over the whole sphere; and, within 320 m of the landing point, the landing site's flat map (`game/world/`, from `data/regions.ts`) exactly as in Milestones 1–3, blending into the Moon by 480 m.
+2. `scene/planet/` draws it as a cube-sphere of 32×32 chunks: finer near the camera, coarser with distance, culled behind the horizon, built in Web Workers and streamed in without holes (skirts hide the steps between levels of detail).
+3. Rocks (`game/planet/rocks.ts`) are generated per cell everywhere, in proportion to each province's rockiness; the landing site keeps its own. Ground collision is streamed as triangle-mesh tiles around the player, and rocks near the player get colliders. Boulders and rocks never depend on graphics quality, so they can safely be obstacles.
 
 ### The astronaut
 
 Every frame runs in a fixed order (`FRAME_PRIORITY` in `config/game.ts`):
 
 1. **Input** (`input/`): DOM listeners record held keys, mouse movement and jump presses.
-2. **Physics** (60 Hz fixed step): `scene/player/playerController.ts` runs the pure motor from `game/player/movement.ts`, then moves the kinematic capsule with Rapier's character controller (swept shape casts against the terrain and rocks: slopes, steps, snapping to the ground). The exact terrain height is a safety net for grounding and tunnelling.
+2. **Physics** (60 Hz fixed step): `scene/player/planetController.ts` runs the pure motor from `game/player/movement.ts` in the astronaut's own frame (up away from the Moon's centre, carried along the ground), then moves the kinematic capsule, kept upright, with Rapier's character controller (swept shape casts against the ground tiles and rocks: slopes, steps, snapping to the ground). Gravity pulls toward the centre; the exact ground height is a safety net for grounding and tunnelling.
 3. **Player** (after physics): publishes the interpolated position; the model picks its animation state from the physics state and poses its joints procedurally.
 4. **Camera** (`scene/camera/CameraRig.tsx`): applies mouse-look and follows the player in third person (sphere-cast collision keeps it out of terrain and rocks) or first person (body hidden from the camera but still casting its shadow).
 5. **Interaction** (`scene/mining/MiningSystem.tsx`): aims from the centre of this frame's view, mines, and runs the save's play clock (see below).
@@ -79,7 +77,7 @@ To replace the procedural astronaut with a rigged GLTF model, swap `AstronautMod
 - **Placement** (`game/mining/deposits.ts`): deterministic for the region's seed. Rarer types are placed first; each favours its habitat (titanium in dark mare, helium-3 and relics on crater floors, regolith and crystals on rims), and all keep out of the landing zone, off steep slopes, clear of solid rocks and apart from each other. Ids are stable (`region:resource:index`), so saves can refer to them.
 - **Aiming** reuses Rapier: each deposit has a rounded-box collider (solid like a rock, except flat dust patches) and a small one for the ore it leaves, on one fixed body, each enabled only while it exists. A ray from the view centre against the `deposits` group picks the target; a second ray against terrain and rocks must not be blocked. Reach is measured from the astronaut's chest, so third person isn't penalised.
 - **Mining** is time-based: deposit health falls at `tool.power / hardness` per second while the button is held. At zero the deposit breaks exactly once and leaves its yield as ore; E picks up what fits in the backpack. After the ore is gone, common deposits regrow on the save's play clock; rare ones never do.
-- **Saved**: inventory, equipped tool, mined-out deposits, ore left on the ground and the play clock (save version 3; versions 1 and 2 migrate). Aim, partial damage, particles and physics objects are never saved.
+- **Saved**: inventory, equipped tool, mined-out deposits, ore left on the ground, the play clock and where the astronaut stands on the Moon (save version 4; versions 1–3 migrate, flat-map positions carried onto the Moon). Aim, partial damage, particles and physics objects are never saved.
 - **Rendering**: one instanced mesh per deposit type, one for halos around rare deposits and two for ore, a single beam, contact glow and light, and two fixed-size particle pools whose size follows graphics quality.
 
 A new tool (drill, laser extractor, vacuum) is a new entry in `TOOLS` with its own power and reach; a new resource is an entry in `RESOURCES` plus its item, and a shape in `scene/mining/depositGeometry.ts` if none of the existing ones fit.
@@ -93,8 +91,8 @@ A new tool (drill, laser extractor, vacuum) is a new entry in `TOOLS` with its o
 
 ### Debugging
 
-In development (or any build with `?debug` in the URL), `window.__lunarDebug` exposes the live player, motion, animation, camera, mining and world-clock state, the deposits, and the stores, read-only by convention, for inspection and automated tests. Its one action, `teleport(x, z)`, moves the astronaut for testing.
+In development (or any build with `?debug` in the URL), `window.__lunarDebug` exposes the live player, motion, animation, camera, mining and world-clock state, the deposits, the Moon's generator (`planet()`), terrain streaming numbers (`terrain()`) and the stores, read-only by convention, for inspection and automated tests. `map` and `local()` give positions in landing-site map coordinates. Its actions move the astronaut or the camera for testing: `teleport(x, z)` (map coordinates), `teleportTo(direction)` (anywhere on the Moon) and `view(position, target)` (a fixed camera; `view(null)` hands it back).
 
-## Current status: Milestone 3
+## Current status: Milestone 4, phases 1–4 of 8
 
-Mining and resource collection on the landing site: six deposit types from common lunar dust to extremely rare ancient structures, placed by habitat; mining with the basic tool in either camera mode (beam, sparks, dust, heat glow, camera tremble, sounds); ore to collect; an inventory with stack limits; a mining HUD with toasts; and saves that keep the haul and the mined-out deposits. Survival values are fixed at 100; no economy, combat or missions yet.
+The whole spherical Moon is playable: walk, sprint and jump anywhere on it, including the far side, with the camera, lighting (fixed sun, earthshine, an automatic helmet lamp at night) and the landing site's mining from Milestone 3 working on the sphere. The HUD shows the province and coordinates underfoot. Still to come in this milestone: deposits across the whole Moon, exploration and discoveries, caves, and a performance and documentation pass. Survival values are fixed at 100; no economy, combat or missions yet.
