@@ -12,6 +12,7 @@ export * from './frame'
 export * from './provinces'
 export * from './rocks'
 export * from './sampler'
+export * from './selenographic'
 
 let moon: Planet | null = null
 let landingDeposits: RegionDeposits | null = null

@@ -6,6 +6,7 @@ import { CameraModeIndicator, ControlsHint, LookHint } from './ControlHints'
 import { MiningHud } from './MiningHud'
 import { Notifications } from './Notifications'
 import { SurvivalBars } from './SurvivalBars'
+import { useLocation } from './useLocation'
 
 function KeyHint({ action, label, className }: { action: 'pause' | 'inventory'; label: string; className?: string }) {
   return (
@@ -21,6 +22,13 @@ function KeyHint({ action, label, className }: { action: 'pause' | 'inventory'; 
 /** In-game overlay. Never captures pointer events, so the canvas stays interactive. */
 export function Hud({ leaving }: { leaving: boolean }) {
   const region = getRegion(useWorldStore((s) => s.regionId))
+  // Where on the Moon the astronaut is now, and where this session began (for the arrival card).
+  const { current, arrival } = useLocation()
+  const placeName = current?.province ?? region.name
+  const placeSide = current ? (current.side === 'far' ? 'FAR SIDE' : 'NEAR SIDE') : null
+  const arrivalName = arrival?.province ?? region.name
+  // The landing site keeps its own story; other places describe their kind of landscape.
+  const arrivalText = !arrival || arrival.kind === 'landing-basin' ? region.description : arrival.description
 
   return (
     <div
@@ -30,8 +38,11 @@ export function Hud({ leaving }: { leaving: boolean }) {
       )}
     >
       <div className="absolute left-6 top-6 sm:left-10 sm:top-8">
-        <p className="text-sm font-semibold tracking-[0.4em] text-lunar-100">{region.name.toUpperCase()}</p>
-        <p className="mt-1 text-[11px] font-semibold tracking-[0.35em] text-lunar-500">{region.coordinates}</p>
+        <p className="text-sm font-semibold tracking-[0.4em] text-lunar-100">{placeName.toUpperCase()}</p>
+        <p className="mt-1 text-[11px] font-semibold tracking-[0.35em] text-lunar-500">
+          {current?.coordinates ?? region.coordinates}
+          {placeSide && <span className="ml-3 text-lunar-600">{placeSide}</span>}
+        </p>
       </div>
 
       <div className="absolute right-6 top-6 flex items-center gap-5 text-[11px] font-semibold tracking-[0.3em] text-lunar-400 sm:right-10 sm:top-8">
@@ -58,10 +69,10 @@ export function Hud({ leaving }: { leaving: boolean }) {
           />
           <p className="text-[11px] font-semibold tracking-[0.5em] text-earth-300/80">ENTERING REGION</p>
           <h2 className="mt-4 font-display text-2xl tracking-[0.32em] text-lunar-50 [text-shadow:0_0_30px_rgb(0_0_0/0.6)] sm:text-3xl">
-            {region.name.toUpperCase()}
+            {arrivalName.toUpperCase()}
           </h2>
           <p className="mt-4 max-w-md text-[15px] font-medium tracking-[0.06em] text-lunar-200 [text-shadow:0_0_20px_rgb(0_0_0/0.8)]">
-            {region.description}
+            {arrivalText}
           </p>
         </div>
       )}

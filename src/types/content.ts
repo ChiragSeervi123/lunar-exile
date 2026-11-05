@@ -199,6 +199,11 @@ export interface MoonDef {
   seed: number
   /** Region whose flat map becomes the landing site, at the +Y pole. */
   landingRegion: string
+  /**
+   * Selenographic coordinates of the landing point, degrees (north and east positive). They fix
+   * latitude and longitude everywhere: north at the landing point is the flat map's north.
+   */
+  landingCoordinates: { latitude: number; longitude: number }
   /** How many provinces the surface is divided into. */
   provinces: number
 }

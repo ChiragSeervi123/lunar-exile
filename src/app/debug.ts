@@ -69,8 +69,21 @@ export function exposeDebugHandles(): void {
     },
     /** The landing site's deposits on the Moon (world positions). */
     deposits: () => getLandingDeposits().list,
-    /** The same deposits with their positions on the map, as in Milestone 3. */
-    mapDeposits: () => getRegionDeposits(MOON.landingRegion).list,
+    /** The same deposits as generated on the flat map in Milestone 3. */
+    flatDeposits: () => getRegionDeposits(MOON.landingRegion).list,
+    /**
+     * Everything in map coordinates, for checks written against the landing-site map: the
+     * astronaut's feet, the camera, and the deposits where they stand on the Moon.
+     */
+    map: {
+      get player() {
+        return toMap(playerRuntime.position)
+      },
+      get camera() {
+        return toMap(cameraRuntime.position)
+      },
+      deposits: () => getLandingDeposits().list.map((d) => ({ ...d, ...toMap(d) })),
+    },
     /** Fixes the camera at a world position looking at a target (null hands it back to the rig). */
     view: (position: Vec3 | null, target?: Vec3, up?: Vec3) => {
       cameraRuntime.override = position && target ? { position, target, up: up ?? normalize(vec3(), position) } : null

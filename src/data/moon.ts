@@ -10,5 +10,7 @@ export const MOON: MoonDef = {
   radius: 3500,
   seed: 1969,
   landingRegion: 'landing-site',
+  // As the landing-site region's own label says.
+  landingCoordinates: { latitude: 0.67, longitude: 23.47 },
   provinces: 42,
 }

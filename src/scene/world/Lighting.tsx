@@ -38,7 +38,12 @@ const MIN_SHADOW_ELEVATION = 0.14
  */
 const DEPTH_BIAS = 0.04
 /** Helmet lamp: brightness at full darkness, reach (m), beam half-angle (rad), and the sun's height (sine) where it fades in. */
-const LAMP = { intensity: 28, distance: 45, angle: 0.62, penumbra: 0.55, fullAt: -0.02, offAt: 0.09 }
+const LAMP = { intensity: 22, distance: 40, angle: 0.55, penumbra: 0.6, fullAt: -0.02, offAt: 0.09 }
+/**
+ * Sky/ground fill by day and by night. By day it keeps detail in shadows; at night there is only
+ * starlight (and earthshine on the near side, a light of its own), so the helmet lamp matters.
+ */
+const FILL = { day: 0.26, night: 0.06 }
 
 /**
  * Sunlight fixed in space, so day and night fall where they always do on the Moon; faint blue
@@ -109,8 +114,12 @@ export function Lighting({ region, planet, shadowMapSize, shadowExtent, followSh
     t.up.copy(t.focus).normalize()
     // The sun's height above the local horizon (as a sine).
     const elevation = sunDir.dot(t.up)
-    // The sky fill is centred on the local vertical.
-    skyRef.current?.position.copy(t.up)
+    // The sky fill is centred on the local vertical, and fades as the sun sets.
+    const sky = skyRef.current
+    if (sky) {
+      sky.position.copy(t.up)
+      sky.intensity = FILL.night + (FILL.day - FILL.night) * smoothstep(-0.12, 0.08, elevation)
+    }
     // Where the sun is down the Moon shades everything already: stop re-rendering the shadow map.
     light.shadow.autoUpdate = elevation > -0.05
 
@@ -181,7 +190,7 @@ export function Lighting({ region, planet, shadowMapSize, shadowExtent, followSh
         // more: it casts from back faces, so sunlit facets never shadow themselves.
         shadow-normalBias={0.04}
       />
-      <hemisphereLight ref={skyRef} args={['#8ea6d4', '#2a2927', 0.26]} />
+      <hemisphereLight ref={skyRef} args={['#8ea6d4', '#2a2927', FILL.day]} />
       {earthDir && <directionalLight ref={earthRef} target={target} color="#8fb2ff" intensity={0.28} />}
       <spotLight
         ref={lampRef}

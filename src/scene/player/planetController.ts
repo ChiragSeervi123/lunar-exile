@@ -10,6 +10,9 @@ import { BODY_CENTER, MOTOR_CONFIG } from './body'
 
 type World = RapierContext['world']
 
+/** Below this ground speed with no movement input, the body is standing still, m/s. */
+const STILL_SPEED = 0.05
+
 /** Where a saved game left the astronaut: feet position and the way it faced, world space. */
 export interface PlanetPose {
   position: Vec3
@@ -119,9 +122,22 @@ export function createPlanetController(world: World, planet: Planet, queryFlags:
         toLocal(frame, hit.normal1, normal)
         if (normal.y < wallNormalY) slideAlongWall(motor, normal.x, normal.z)
       }
-      let x = from.x + movement.x
-      let y = from.y + movement.y
-      let z = from.z + movement.z
+      let mx = movement.x
+      let my = movement.y
+      let mz = movement.z
+      // Standing still on walkable ground: the controller turns the small push into the ground into
+      // a slide along the slope, which would make the body creep downhill. Only the part straight
+      // down is kept. (Ground too steep to stand on isn't "grounded", so the body still slides there.)
+      const still = input.forward === 0 && input.strafe === 0 && Math.hypot(v.x, v.z) < STILL_SPEED
+      if (still && !jumped && v.y <= 0 && controller.computedGrounded()) {
+        const down = mx * frame.up.x + my * frame.up.y + mz * frame.up.z
+        mx = frame.up.x * down
+        my = frame.up.y * down
+        mz = frame.up.z * down
+      }
+      let x = from.x + mx
+      let y = from.y + my
+      let z = from.z + mz
       let r = Math.hypot(x, y, z)
       setVec(up, x / r, y / r, z / r)
       // Safety net from the exact ground: lift the body back out if it ever tunnels through.
