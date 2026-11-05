@@ -39,7 +39,8 @@ function buildModel(): Model {
     [-1, 1],
     [-1, -1],
   ].flatMap(([sx, sz]) => [
-    part(box(0.22, 2.9, 0.22), STRUT, [sx * 2.35, 1.35, sz * 2.35], [sz * 0.32, 0, -sx * 0.32]),
+    // Splayed: the foot out at the pad, the top in under the hull.
+    part(box(0.22, 2.9, 0.22), STRUT, [sx * 2.35, 1.35, sz * 2.35], [-sz * 0.32, 0, sx * 0.32]),
     part(cylinder(0.5, 0.58, 0.14, 6), DARK, [sx * 2.85, 0.07, sz * 2.85]),
   ])
   return {
@@ -145,7 +146,7 @@ export function Lander() {
     }
   }, [world, rapier, built])
 
-  const scratch = useMemo(() => ({ chest: vec3(), local: vec3() }), [])
+  const scratch = useMemo(() => ({ chest: vec3(), local: vec3(), toward: vec3() }), [])
   // Before the mining system, which would otherwise take the interact press.
   useFrame(({ clock }) => {
     built.glowMaterial.color.setScalar(0.75 + 0.25 * Math.sin(clock.elapsedTime * 2.4))
@@ -154,7 +155,7 @@ export function Lander() {
     if (playerRuntime.active) {
       const p = playerRuntime.position
       const f = playerRuntime.frame
-      const { chest, local } = scratch
+      const { chest, local, toward } = scratch
       chest.x = p.x + f.up.x * CHEST
       chest.y = p.y + f.up.y * CHEST
       chest.z = p.z + f.up.z * CHEST
@@ -162,7 +163,10 @@ export function Lander() {
       near = phase === 'playing' && Math.hypot(t.x - chest.x, t.y - chest.y, t.z - chest.z) < LANDER.reach
       const l = built.position
       tradeRuntime.distance = Math.hypot(l.x - p.x, l.y - p.y, l.z - p.z)
-      toLocal(f, vec3(l.x - p.x, l.y - p.y, l.z - p.z), local)
+      toward.x = l.x - p.x
+      toward.y = l.y - p.y
+      toward.z = l.z - p.z
+      toLocal(f, toward, local)
       tradeRuntime.bearing = Math.atan2(local.x, -local.z)
       if (near && inputState.interactQueued) {
         inputState.interactQueued = false
