@@ -16,10 +16,10 @@ import { DEPOSIT_BOUNDS, type Deposit, type DepositSites } from '@/game/mining'
 import { miningRuntime } from '@/stores/runtime'
 import type { ResourceDef } from '@/types/content'
 import { clamp } from '@/utils/math'
-import { createDepositGeometry, createHaloGeometry, createOreGeometry } from './depositGeometry'
-import { depositRotation, depositUp } from './depositPose'
 import { withPlanetShadow } from '../planet/planetShadow'
+import { createDepositGeometry, createHaloGeometry, createOreGeometry } from './depositGeometry'
 import { createDepositMaterial, createHaloMaterial, createOreMaterial } from './depositMaterials'
+import { depositRotation, depositUp } from './depositPose'
 
 /** Seconds for a broken deposit to crumble away, and for a regrown one to rise again. */
 const BREAK_TIME = 0.35
@@ -30,7 +30,64 @@ const ORE_TIME = 0.4
 const HALO_STRENGTH = 0.3
 const ORE_GLOW = 0.6
 
-interface Visual {
+/**
+ * Shapes and materials for every deposit type, created once and shared by every field built from
+ * them, so streaming deposits in and out never compiles a shader or rebuilds a shape.
+ */
+export interface DepositAssets {
+  /** Shape of a deposit type (each field takes its own copy, to carry per-instance effects). */
+  geometry(resourceId: string): BufferGeometry
+  material(resourceId: string): Material
+  halo: { geometry: BufferGeometry; material: Material }
+  ore: { geometry: BufferGeometry; material: Material }
+  dispose(): void
+}
+
+export function createDepositAssets(reflection: Texture): DepositAssets {
+  const geometries = new Map<string, BufferGeometry>()
+  const materials = new Map<string, Material>()
+  const def = (id: string): ResourceDef => {
+    const resource = getResource(id)
+    if (!resource) throw new Error(`Unknown resource ${id}`)
+    return resource
+  }
+  const halo = { geometry: createHaloGeometry(), material: createHaloMaterial() }
+  const ore = { geometry: createOreGeometry(), material: withPlanetShadow(createOreMaterial()) }
+  return {
+    geometry(id) {
+      let g = geometries.get(id)
+      if (!g) geometries.set(id, (g = createDepositGeometry(def(id).appearance)))
+      return g
+    },
+    material(id) {
+      let m = materials.get(id)
+      if (!m) materials.set(id, (m = withPlanetShadow(createDepositMaterial(def(id).appearance, reflection))))
+      return m
+    },
+    halo,
+    ore,
+    dispose() {
+      geometries.forEach((g) => g.dispose())
+      materials.forEach((m) => m.dispose())
+      for (const part of [halo, ore]) {
+        part.geometry.dispose()
+        part.material.dispose()
+      }
+    },
+  }
+}
+
+/** How a deposit looks right now, kept when the set of deposits shown changes. */
+export interface DepositLook {
+  /** 0 = gone, 1 = fully standing. */
+  presence: number
+  /** Ore on the ground: 0 = none, 1 = fully shown. */
+  ore: number
+  /** Beam heat, 0..1, smoothed. */
+  heat: number
+}
+
+interface Visual extends DepositLook {
   deposit: Deposit
   rotation: Quaternion
   /** The local vertical at the deposit. */
@@ -41,14 +98,12 @@ interface Visual {
   slot: number
   /** Halo instance, or -1. */
   halo: number
-  /** 0 = gone, 1 = fully standing. */
-  presence: number
-  /** Ore on the ground: 0 = none, 1 = fully shown. */
-  ore: number
-  /** Beam heat, 0..1, smoothed. */
-  heat: number
+  /** Ore instance. */
+  oreSlot: number
   /** Matrix needs rewriting this frame. */
   moved: boolean
+  /** Jump straight to the current state at the next update, without animating. */
+  snap: boolean
   /** Random phase so ore piles don't bob in step. */
   phase: number
 }
@@ -59,19 +114,22 @@ export interface DepositField {
   update(sites: DepositSites, dt: number, time: number): void
   /** Shows the state at the next update without animating, e.g. after loading a save. */
   snap(): void
+  /** Each deposit's current look, by id, to carry over into the next field. */
+  looks(): Map<string, DepositLook>
+  /** Frees this field's own buffers (the shared assets stay). */
   dispose(): void
 }
 
 /**
- * Every deposit in a region, drawn with instancing: one mesh per deposit type, one for all halos
- * and one for all ore heaps, so the whole field costs a handful of draw calls. Instances are only
- * rewritten while they animate.
+ * A set of deposits drawn with instancing: one mesh per deposit type, one for all halos and two
+ * for ore heaps, so a whole field costs a handful of draw calls. Instances are only rewritten while
+ * they animate. Deposits found in `carried` keep their look; the others appear as they are.
  */
-export function createDepositField(deposits: readonly Deposit[], reflection: Texture): DepositField {
+export function createDepositField(deposits: readonly Deposit[], assets: DepositAssets, carried?: ReadonlyMap<string, DepositLook>): DepositField {
   const object = new Group()
   object.name = 'deposits'
-  const geometries: BufferGeometry[] = []
-  const materials: Material[] = []
+  const own: BufferGeometry[] = []
+  const meshes: InstancedMesh[] = []
   const visuals: Visual[] = []
   const matrix = new Matrix4()
   const position = new Vector3()
@@ -81,48 +139,47 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
   const Y = new Vector3(0, 1, 0)
   const offset = new Vector3()
 
-  const haloDeposits = deposits.filter((d) => getResource(d.resourceId)?.appearance.halo)
-  const haloMesh = new InstancedMesh(createHaloGeometry(), createHaloMaterial(), Math.max(1, haloDeposits.length))
-  haloMesh.count = haloDeposits.length
-  haloMesh.frustumCulled = false
-  haloMesh.renderOrder = 1
-  geometries.push(haloMesh.geometry)
-  materials.push(haloMesh.material as Material)
+  const instanced = (geometry: BufferGeometry, material: Material, count: number) => {
+    const mesh = new InstancedMesh(geometry, material, Math.max(1, count))
+    mesh.count = count
+    // Deposits spread around the astronaut, so culling a mesh as one never helps.
+    mesh.frustumCulled = false
+    meshes.push(mesh)
+    return mesh
+  }
 
-  const oreMesh = new InstancedMesh(createOreGeometry(), withPlanetShadow(createOreMaterial()), Math.max(1, deposits.length))
-  oreMesh.count = deposits.length
-  oreMesh.frustumCulled = false
+  const haloDeposits = deposits.filter((d) => getResource(d.resourceId)?.appearance.halo)
+  const haloMesh = instanced(assets.halo.geometry, assets.halo.material, haloDeposits.length)
+  haloMesh.renderOrder = 1
+  const oreMesh = instanced(assets.ore.geometry, assets.ore.material, deposits.length)
   oreMesh.castShadow = true
   oreMesh.receiveShadow = true
-  geometries.push(oreMesh.geometry)
-  materials.push(oreMesh.material as Material)
   // A small aura in the ore's colour, so ore stands out from the grey ground until it is picked up.
-  const oreGlow = new InstancedMesh(haloMesh.geometry, haloMesh.material, Math.max(1, deposits.length))
-  oreGlow.count = deposits.length
-  oreGlow.frustumCulled = false
+  const oreGlow = instanced(assets.halo.geometry, assets.halo.material, deposits.length)
   oreGlow.renderOrder = 1
 
-  for (const [resourceId, def] of Object.entries(RESOURCES) as [string, ResourceDef][]) {
+  const haloIndex = new Map(haloDeposits.map((d, i) => [d.id, i]))
+  const oreIndex = new Map(deposits.map((d, i) => [d.id, i]))
+  for (const resourceId of Object.keys(RESOURCES)) {
     const members = deposits.filter((d) => d.resourceId === resourceId)
     if (members.length === 0) continue
-    const geometry = createDepositGeometry(def.appearance)
+    // A copy of the shape, carrying this field's per-instance effects.
+    const geometry = assets.geometry(resourceId).clone()
+    own.push(geometry)
     const fx = new Float32Array(members.length * 2)
     for (let i = 0; i < members.length; i++) fx[i * 2] = 1
     geometry.setAttribute('instanceFx', new InstancedBufferAttribute(fx, 2))
-    const mesh = new InstancedMesh(geometry, withPlanetShadow(createDepositMaterial(def.appearance, reflection)), members.length)
+    const mesh = instanced(geometry, assets.material(resourceId), members.length)
     mesh.name = resourceId
     mesh.castShadow = true
     mesh.receiveShadow = true
-    // Deposits spread across the whole region, so culling the mesh as one never helps.
-    mesh.frustumCulled = false
-    geometries.push(geometry)
-    materials.push(mesh.material as Material)
     object.add(mesh)
 
     members.forEach((deposit, slot) => {
       // A small, stable brightness variation per deposit.
       const shadeSeed = Math.abs(Math.sin(deposit.x * 12.9898 + deposit.z * 78.233)) % 1
       mesh.setColorAt(slot, color.setScalar(0.9 + 0.16 * shadeSeed))
+      const look = carried?.get(deposit.id)
       visuals.push({
         deposit,
         rotation: depositRotation(deposit, new Quaternion()),
@@ -130,21 +187,22 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
         upright: new Quaternion().setFromUnitVectors(Y, depositUp(deposit, new Vector3())),
         mesh,
         slot,
-        halo: def.appearance.halo ? haloDeposits.indexOf(deposit) : -1,
-        presence: 1,
-        ore: 0,
-        heat: 0,
+        halo: haloIndex.get(deposit.id) ?? -1,
+        oreSlot: oreIndex.get(deposit.id)!,
+        presence: look?.presence ?? 1,
+        ore: look?.ore ?? 0,
+        heat: look?.heat ?? 0,
         moved: true,
+        snap: !look,
         phase: shadeSeed * Math.PI * 2,
       })
     })
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   }
 
-  for (const deposit of haloDeposits) {
-    const appearance = getResource(deposit.resourceId)!.appearance
-    haloMesh.setColorAt(haloDeposits.indexOf(deposit), color.set(appearance.halo!).multiplyScalar(HALO_STRENGTH))
-  }
+  haloDeposits.forEach((deposit, i) => {
+    haloMesh.setColorAt(i, color.set(getResource(deposit.resourceId)!.appearance.halo!).multiplyScalar(HALO_STRENGTH))
+  })
   if (haloMesh.instanceColor) haloMesh.instanceColor.needsUpdate = true
   deposits.forEach((deposit, i) => {
     oreMesh.setColorAt(i, color.set(getItem(getResource(deposit.resourceId)?.itemId ?? '')?.color ?? '#ffffff'))
@@ -155,9 +213,6 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
   if (oreMesh.instanceColor) oreMesh.instanceColor.needsUpdate = true
   if (oreGlow.instanceColor) oreGlow.instanceColor.needsUpdate = true
   object.add(haloMesh, oreMesh, oreGlow)
-
-  const oreIndex = new Map(deposits.map((deposit, i) => [deposit, i]))
-  let first = true
 
   return {
     object,
@@ -172,13 +227,13 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
 
         // Mined-out deposits crumble fast and regrow slowly.
         const goal = depleted ? 0 : 1
-        if (first) v.presence = goal
+        if (v.snap) v.presence = goal
         else if (v.presence !== goal) {
           v.presence = depleted ? Math.max(0, v.presence - dt / BREAK_TIME) : Math.min(1, v.presence + dt / REGROW_TIME)
           v.moved = true
         }
 
-        const heated = target === d
+        const heated = target?.id === d.id
         const heat = heated ? Math.min(1, v.heat + dt * 2.5) : Math.max(0, v.heat - dt * 1.5)
         const fx = v.mesh.geometry.getAttribute('instanceFx') as InstancedBufferAttribute
         if (heat !== v.heat || heated || v.moved) {
@@ -209,10 +264,10 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
         // Ore pops up once the deposit has crumbled, then bobs and turns slowly until collected.
         const oreGoal = d.id in sites.drops && v.presence < 0.3 ? 1 : 0
         const shown = v.ore
-        if (first) v.ore = oreGoal
+        if (v.snap) v.ore = oreGoal
         else if (v.ore !== oreGoal) v.ore = oreGoal ? Math.min(1, v.ore + dt / ORE_TIME) : Math.max(0, v.ore - dt / ORE_TIME)
-        if (v.ore > 0 || shown > 0 || first) {
-          const i = oreIndex.get(d)!
+        if (v.ore > 0 || shown > 0 || v.snap) {
+          const i = v.oreSlot
           // Overshoot a little as it appears.
           const pop = v.ore < 1 ? Math.sin(v.ore * Math.PI * 0.5) * (1 + 0.25 * Math.sin(v.ore * Math.PI)) : 1
           const size = clamp(0.85 + d.yield * 0.08, 0.9, 1.4) * pop
@@ -224,21 +279,26 @@ export function createDepositField(deposits: readonly Deposit[], reflection: Tex
           oreGlow.setMatrixAt(i, matrix.compose(position, spin, scale.set(0.6 * size, 0.45 * size, 0.6 * size)))
           oreChanged = true
         }
+        v.snap = false
       }
       if (oreChanged) {
         oreMesh.instanceMatrix.needsUpdate = true
         oreGlow.instanceMatrix.needsUpdate = true
       }
       if (haloChanged) haloMesh.instanceMatrix.needsUpdate = true
-      first = false
     },
     snap() {
-      first = true
-      for (const v of visuals) v.moved = true
+      for (const v of visuals) {
+        v.snap = true
+        v.moved = true
+      }
+    },
+    looks() {
+      return new Map(visuals.map((v) => [v.deposit.id, { presence: v.presence, ore: v.ore, heat: v.heat }]))
     },
     dispose() {
-      geometries.forEach((g) => g.dispose())
-      materials.forEach((m) => m.dispose())
+      own.forEach((g) => g.dispose())
+      meshes.forEach((m) => m.dispose())
     },
   }
 }

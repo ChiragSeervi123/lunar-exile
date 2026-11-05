@@ -3,7 +3,7 @@ import { useRapier } from '@react-three/rapier'
 import { useEffect, useMemo, useRef } from 'react'
 import { Color, MeshStandardMaterial, type Group } from 'three'
 import { FRAME_PRIORITY } from '@/config/game'
-import { createPlanetRockField, type Planet } from '@/game/planet'
+import { getPlanetRocks, type Planet } from '@/game/planet'
 import { playerRuntime } from '@/stores/runtime'
 import type { RegionDef } from '@/types/content'
 import { createRockSet } from '../world/rockGeometry'
@@ -40,7 +40,7 @@ export function PlanetRocks({ planet, region, debrisDensity }: PlanetRocksProps)
     if (!root) return
     const s = createRockStreamer({
       planet,
-      field: createPlanetRockField(planet, region),
+      field: getPlanetRocks(),
       debrisDensity,
       geometries,
       material,

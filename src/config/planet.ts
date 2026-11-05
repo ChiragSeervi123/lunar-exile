@@ -44,6 +44,16 @@ export const PLANET_PHYSICS = {
   settleSteps: 2,
 }
 
+/** Deposits on the Moon beyond the landing site's own, streamed in cells around the astronaut. */
+export const PLANET_DEPOSITS = {
+  /** Cells reaching within this distance are active: drawn, solid and minable, meters. */
+  activeRadius: 160,
+  /** The active set is re-evaluated after moving this far, meters. */
+  updateDistance: 20,
+  /** Time per frame spent generating new cells, ms; the set changes once all are ready. */
+  budgetMs: 3,
+}
+
 /** Rocks on the Moon, streamed in cells around the camera (drawing) and the player (collision). */
 export const PLANET_ROCKS = {
   /** Rocks of each class are drawn this far from the camera, meters. */

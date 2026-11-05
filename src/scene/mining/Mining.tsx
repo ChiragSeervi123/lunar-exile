@@ -1,18 +1,21 @@
 import { useFrame } from '@react-three/fiber'
-import { useEffect, useMemo } from 'react'
-import type { PerspectiveCamera } from 'three'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Group, PerspectiveCamera } from 'three'
 import { FRAME_PRIORITY } from '@/config/game'
+import { PLANET_DEPOSITS } from '@/config/planet'
 import { getTool } from '@/data/tools'
-import type { Deposit } from '@/game/mining'
-import { getLandingDeposits } from '@/game/planet'
+import type { Deposit, RegionDeposits } from '@/game/mining'
+import { getLandingDeposits, getPlanetDeposits } from '@/game/planet'
 import { useGameStore } from '@/stores/gameStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
+import { playerRuntime } from '@/stores/runtime'
 import { useWorldStore } from '@/stores/worldStore'
 import type { RegionDef } from '@/types/content'
 import { directionFromAngles } from '@/utils/math'
 import { createSkyReflection } from '../reflection'
 import { DepositColliders } from './DepositColliders'
-import { createDepositField } from './depositField'
+import { createDepositAssets, createDepositField, type DepositField as Field } from './depositField'
+import { createDepositStreamer } from './depositStreamer'
 import { createMiningEffects } from './miningEffects'
 import { MiningSystem } from './MiningSystem'
 
@@ -22,9 +25,12 @@ interface MiningProps {
   particleBudget: number
 }
 
-/** The landing site's deposits on the Moon with their colliders, and the mining system and effects. Must sit inside <Physics>. */
+/**
+ * Deposits across the Moon with their colliders, and the mining system and effects. The landing
+ * site's deposits are always live; elsewhere, those around the astronaut. Must sit inside <Physics>.
+ */
 export function Mining({ region, particleBudget }: MiningProps) {
-  const deposits = getLandingDeposits()
+  const deposits = useActiveDeposits()
   return (
     <>
       <DepositField region={region} deposits={deposits.list} />
@@ -35,6 +41,21 @@ export function Mining({ region, particleBudget }: MiningProps) {
   )
 }
 
+/** The live deposits, updated as the astronaut (or, in the menu, the camera) moves. */
+function useActiveDeposits(): RegionDeposits {
+  const [streamer] = useState(() => createDepositStreamer(getLandingDeposits(), getPlanetDeposits(), PLANET_DEPOSITS.activeRadius))
+  const [active, setActive] = useState(() => streamer.active)
+  useFrame(({ camera }) => {
+    const next = streamer.update(playerRuntime.active ? playerRuntime.position : camera.position)
+    if (next) setActive(next)
+  }, FRAME_PRIORITY.followers)
+  return active
+}
+
+/**
+ * Draws the live deposits. Shapes and materials are made once; when the set changes a new field
+ * is built from them, and deposits that stay keep their look (crumbling, ore, beam heat).
+ */
 function DepositField({ region, deposits }: { region: RegionDef; deposits: readonly Deposit[] }) {
   const { sun, earth } = region.sky
   const reflection = useMemo(
@@ -45,22 +66,49 @@ function DepositField({ region, deposits }: { region: RegionDef; deposits: reado
       ),
     [sun, earth],
   )
-  const field = useMemo(() => createDepositField(deposits, reflection), [deposits, reflection])
-  useEffect(() => () => reflection.dispose(), [reflection])
-  useEffect(() => () => field.dispose(), [field])
+  const assets = useMemo(() => createDepositAssets(reflection), [reflection])
+  const group = useRef<Group>(null)
+  const field = useRef<Field | null>(null)
+
+  useEffect(
+    () => () => {
+      assets.dispose()
+      reflection.dispose()
+    },
+    [assets, reflection],
+  )
+  useEffect(() => {
+    const root = group.current
+    if (!root) return
+    const previous = field.current
+    const next = createDepositField(deposits, assets, previous?.looks())
+    if (previous) {
+      root.remove(previous.object)
+      previous.dispose()
+    }
+    root.add(next.object)
+    field.current = next
+  }, [deposits, assets])
+  useEffect(
+    () => () => {
+      field.current?.dispose()
+      field.current = null
+    },
+    [],
+  )
   // A game started or loaded from the menu shows its mined-out deposits at once, without crumbling them.
   useEffect(
     () =>
       useWorldStore.subscribe((state, previous) => {
-        if (state.sites !== previous.sites && useGameStore.getState().phase === 'menu') field.snap()
+        if (state.sites !== previous.sites && useGameStore.getState().phase === 'menu') field.current?.snap()
       }),
-    [field],
+    [],
   )
   useFrame(
-    (state, delta) => field.update(useWorldStore.getState().sites, Math.min(delta, 0.1), state.clock.elapsedTime),
+    (state, delta) => field.current?.update(useWorldStore.getState().sites, Math.min(delta, 0.1), state.clock.elapsedTime),
     FRAME_PRIORITY.followers,
   )
-  return <primitive object={field.object} />
+  return <group ref={group} />
 }
 
 function MiningEffectsLayer({ particleBudget }: { particleBudget: number }) {

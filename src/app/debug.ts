@@ -1,6 +1,15 @@
 import { MOON } from '@/data/moon'
 import { getRegionDeposits } from '@/game/mining'
-import { chartCoordinates, chartDirection, getLandingDeposits, getPlanet, toLocal } from '@/game/planet'
+import {
+  chartCoordinates,
+  chartDirection,
+  DEPOSIT_CELL_DEPTH,
+  getLandingDeposits,
+  getPlanet,
+  getPlanetDeposits,
+  nodesWithin,
+  toLocal,
+} from '@/game/planet'
 import { inputState } from '@/input/inputState'
 import { planetTerrainStatus } from '@/scene/planet/terrainStatus'
 import { useGameStore } from '@/stores/gameStore'
@@ -69,6 +78,15 @@ export function exposeDebugHandles(): void {
     },
     /** The landing site's deposits on the Moon (world positions). */
     deposits: () => getLandingDeposits().list,
+    /** Deposits across the Moon within `radius` meters of the astronaut, nearest first (the landing site's included). */
+    nearbyDeposits: (radius = 120) => {
+      const here = playerRuntime.position
+      const dir = normalize(vec3(), here)
+      const found = [...getLandingDeposits().list]
+      nodesWithin(dir, radius / R, DEPOSIT_CELL_DEPTH, (n) => found.push(...getPlanetDeposits().cell({ ...n })))
+      const away = (d: Vec3) => Math.hypot(d.x - here.x, d.y - here.y, d.z - here.z)
+      return found.filter((d) => away(d) <= radius).sort((a, b) => away(a) - away(b))
+    },
     /** The same deposits as generated on the flat map in Milestone 3. */
     flatDeposits: () => getRegionDeposits(MOON.landingRegion).list,
     /**

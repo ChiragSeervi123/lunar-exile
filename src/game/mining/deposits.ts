@@ -48,7 +48,7 @@ export const DEPOSIT_BOUNDS: Record<DepositShape, { radius: number; height: numb
 /** Shapes low enough to walk over; everything else blocks the astronaut like a rock. */
 const FLAT_SHAPES: readonly DepositShape[] = ['patch']
 /** Kept between deposits and solid rocks, meters. */
-const ROCK_GAP = 1
+export const ROCK_GAP = 1
 
 /** A deposit's collision box in its own frame: half extents, and the centre's height above the base. */
 export interface DepositBox {
@@ -72,7 +72,7 @@ export function depositBox(deposit: Deposit, shape: DepositShape): DepositBox {
 export const DROP_BOX: DepositBox = { halfExtents: [0.45, 0.35, 0.45], centerY: 0.2, solid: false }
 
 /** How well a terrain sample suits a habitat, 0..1. */
-function habitatFit(habitat: Habitat, s: TerrainSample): number {
+export function habitatFit(habitat: Habitat, s: TerrainSample): number {
   switch (habitat) {
     case 'plains':
       return clamp(1 - 0.8 * s.craterInterior - 0.6 * s.craterRim, 0, 1)
